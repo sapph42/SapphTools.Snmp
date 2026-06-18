@@ -73,7 +73,7 @@ public interface IPrivacyProtocol {
     /// <param name="authDigest">Authentication digest class reference. Only needed for TripleDES privacy protocol. Can be null for all other
     /// privacy protocols.</param>
     /// <returns>Byte array containing encrypted <see cref="ScopedPdu"/> BER encoded data</returns>
-    byte[] Encrypt(byte[] unencryptedData, int offset, int length, byte[] encryptionKey, int engineBoots, int engineTime, out byte[] privacyParameters, Authentication authDigest);
+    byte[] Encrypt(byte[] unencryptedData, int offset, int length, byte[] encryptionKey, int engineBoots, int engineTime, out byte[] privacyParameters, Authentication? authDigest);
 
 	/// <summary>Extend short encryption key</summary>
 	/// <remarks>
@@ -86,7 +86,7 @@ public interface IPrivacyProtocol {
 	/// <param name="engineID">Authoritative engine id. Value is retrieved as part of SNMP v3 discovery procedure</param>
 	/// <param name="authProtocol">Authentication protocol <see cref="AuthenticationDigest"/></param>
 	/// <returns>Extended key value</returns>
-	byte[] ExtendShortKey(byte[] shortKey, byte[] password, byte[] engineID, Authentication authProtocol);
+	byte[]? ExtendShortKey(byte[] shortKey, byte[] password, byte[] engineID, Authentication authProtocol);
 
     /// <summary>
     /// Calculates and returns length of the buffer that is the result of the encryption method.
@@ -103,5 +103,5 @@ public interface IPrivacyProtocol {
     /// <param name="authProtocol">Authentication protocol</param>
     /// <returns>Encryption key</returns>
     /// <exception cref="SnmpPrivacyException">Thrown when key size is shorter then MinimumKeyLength</exception>
-    byte[] PasswordToKey(byte[] secret, byte[] engineId, Authentication authProtocol);
+    byte[]? PasswordToKey(byte[] secret, byte[] engineId, Authentication authProtocol);
 }
