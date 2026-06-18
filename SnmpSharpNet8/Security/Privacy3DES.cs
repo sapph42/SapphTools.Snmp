@@ -114,10 +114,10 @@ public class Privacy3DES : IPrivacyProtocol {
             throw new ArgumentOutOfRangeException(nameof(privacyParameters), "Privacy parameters field is not 8 bytes long.");
 
         try {
-            TripleDES tdes = TripleDES.Create();
+            using TripleDES tdes = TripleDES.Create();
             tdes.Mode = CipherMode.CBC;
             tdes.Padding = PaddingMode.None;
-            ICryptoTransform transform = tdes.CreateDecryptor(key[..24], GetIV(key, privacyParameters));
+            using ICryptoTransform transform = tdes.CreateDecryptor(key[..24], GetIV(key, privacyParameters));
             return transform.TransformFinalBlock(encryptedData, offset, length);
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while TripleDES privacy protocol was decrypting data.", ex);
@@ -151,19 +151,16 @@ public class Privacy3DES : IPrivacyProtocol {
         ArgumentNullException.ThrowIfNull(authDigest, nameof(authDigest));
         byte[] privParamHash = authDigest.ComputeHash(GetSalt(engineBoots), 0, 8);
         privacyParameters = privParamHash[..8];
-        byte[] tmpbuffer = new byte[GetEncryptedLength(length)];
+        using TripleDES tdes = TripleDES.Create();
         try {
-			TripleDES tdes = TripleDES.Create();
 			tdes.Mode = CipherMode.CBC;
 			tdes.Padding = PaddingMode.None;
-			ICryptoTransform transform = tdes.CreateEncryptor(key[..24], GetIV(key, privParamHash[..8]));
-            tmpbuffer = unencryptedData[offset..length];
-            return transform.TransformFinalBlock(tmpbuffer, 0, tmpbuffer.Length);
+			using ICryptoTransform transform = tdes.CreateEncryptor(key[..24], GetIV(key, privParamHash[..8]));
+            return transform.TransformFinalBlock(unencryptedData[offset..length], 0, length - offset);
         } catch (Exception ex) {
 			throw new SnmpPrivacyException("Exception was thrown while TripleDES privacy protocol was encrypting data\r\n", ex);
 		} finally {
             CryptographicOperations.ZeroMemory(privParamHash);
-            CryptographicOperations.ZeroMemory(tmpbuffer);
 		}
 	}
     /// <summary>
@@ -253,10 +250,9 @@ public class Privacy3DES : IPrivacyProtocol {
     /// Returns next salt value.
     /// </summary>
     /// <returns>32-bit integer salt value in network byte order (big endian)</returns>
-    public int NextSalt() {
-        if (_salt == int.MaxValue)
-            _salt = 1;
-        else
+    protected int NextSalt() {
+        _salt = _salt == int.MaxValue ?
+            _salt = 1 :
             _salt += 1;
         return _salt;
     }
