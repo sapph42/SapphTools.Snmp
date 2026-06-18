@@ -94,7 +94,7 @@ public class PrivacyAES : IPrivacyProtocol {
 
             privacyParameters.AsSpan().CopyTo(iv.AsSpan(8));
 
-            Aes rm = Aes.Create();
+            using Aes rm = Aes.Create();
             rm.KeySize = _keyBytes * 8;
             rm.FeedbackSize = 128;
             rm.BlockSize = 128;
@@ -102,7 +102,7 @@ public class PrivacyAES : IPrivacyProtocol {
             rm.Mode = CipherMode.CFB;
             rm.Key = key[..len];
             rm.IV = iv;
-            ICryptoTransform cryptor = rm.CreateDecryptor();
+            using ICryptoTransform cryptor = rm.CreateDecryptor();
 
             if ((encryptedData.Length % _keyBytes) != 0) {
                 int paddedLength = (length + 15) / 16 * 16;
@@ -151,7 +151,7 @@ public class PrivacyAES : IPrivacyProtocol {
         Array.Reverse(privacyParameters);
         privacyParameters.AsSpan().CopyTo(iv.AsSpan(8));
         try {
-            Aes rm = Aes.Create();
+            using Aes rm = Aes.Create();
             rm.KeySize = _keyBytes * 8;
             rm.FeedbackSize = 128;
             rm.BlockSize = 128;
@@ -161,8 +161,9 @@ public class PrivacyAES : IPrivacyProtocol {
             key.CopyTo(pkey, 0);
             rm.Key = pkey;
             rm.IV = iv;
-            ICryptoTransform cryptor = rm.CreateEncryptor();
-            return cryptor.TransformFinalBlock(unencryptedData, offset, length)[..unencryptedData.Length];
+            return rm
+                .CreateEncryptor()
+                .TransformFinalBlock(unencryptedData, offset, length)[..unencryptedData.Length];
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was decrypting data.", ex);
         } finally {
