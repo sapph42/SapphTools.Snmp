@@ -113,21 +113,14 @@ public class Privacy3DES : IPrivacyProtocol {
         if (privacyParameters == null || privacyParameters.Length != 8)
             throw new ArgumentOutOfRangeException(nameof(privacyParameters), "Privacy parameters field is not 8 bytes long.");
 
-        byte[] iv = GetIV(key, privacyParameters);
-        byte[] normKey = new byte[24];
         try {
             TripleDES tdes = TripleDES.Create();
             tdes.Mode = CipherMode.CBC;
             tdes.Padding = PaddingMode.None;
-            Buffer.BlockCopy(key, 0, normKey, 0, normKey.Length);
-            ICryptoTransform transform = tdes.CreateDecryptor(normKey, iv);
-            byte[] decryptedData = transform.TransformFinalBlock(encryptedData, offset, length);
-            return decryptedData;
+            ICryptoTransform transform = tdes.CreateDecryptor(key[..24], GetIV(key, privacyParameters));
+            return transform.TransformFinalBlock(encryptedData, offset, length);
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while TripleDES privacy protocol was decrypting data.", ex);
-        } finally {
-            CryptographicOperations.ZeroMemory(iv);
-            CryptographicOperations.ZeroMemory(normKey);
         }
     }
     /// <summary>
@@ -155,29 +148,20 @@ public class Privacy3DES : IPrivacyProtocol {
 			out byte[] privacyParameters, 
 			Authentication authDigest
 		) {
-		privacyParameters = GetSalt(engineBoots);
-		byte[] privParamHash = authDigest.ComputeHash(privacyParameters, 0, privacyParameters.Length);
-		privacyParameters = new byte[8];
-		Buffer.BlockCopy(privParamHash, 0, privacyParameters, 0, 8);
-		byte[] iv = GetIV(key, privacyParameters);
-        byte[] normKey = new byte[24];
+		byte[] privParamHash = authDigest.ComputeHash(GetSalt(engineBoots), 0, 8);
+        privacyParameters = privParamHash[..8];
         byte[] tmpbuffer = new byte[GetEncryptedLength(length)];
         try {
 			TripleDES tdes = TripleDES.Create();
 			tdes.Mode = CipherMode.CBC;
 			tdes.Padding = PaddingMode.None;
-			// normalize key - generated key is 32 bytes long, we need 24 bytes to encrypt
-			Buffer.BlockCopy(key, 0, normKey, 0, normKey.Length);
-			ICryptoTransform transform = tdes.CreateEncryptor(normKey, iv);
-            Buffer.BlockCopy(unencryptedData, offset, tmpbuffer, 0, length);
-            byte[] encryptedData = transform.TransformFinalBlock(tmpbuffer, 0, tmpbuffer.Length);
-            return encryptedData;
+			ICryptoTransform transform = tdes.CreateEncryptor(key[..24], GetIV(key, privParamHash[..8]));
+            tmpbuffer = unencryptedData[offset..length];
+            return transform.TransformFinalBlock(tmpbuffer, 0, tmpbuffer.Length);
         } catch (Exception ex) {
 			throw new SnmpPrivacyException("Exception was thrown while TripleDES privacy protocol was encrypting data\r\n", ex);
 		} finally {
             CryptographicOperations.ZeroMemory(privParamHash);
-            CryptographicOperations.ZeroMemory(iv);
-            CryptographicOperations.ZeroMemory(normKey);
             CryptographicOperations.ZeroMemory(tmpbuffer);
 		}
 	}
@@ -197,7 +181,7 @@ public class Privacy3DES : IPrivacyProtocol {
     public byte[] ExtendShortKey(byte[] shortKey, byte[] password, byte[] engineID, Authentication authProtocol) {
         int length = shortKey.Length;
         byte[] extendedKey = new byte[MinimumKeyLength];
-        Buffer.BlockCopy(shortKey, 0, extendedKey, 0, shortKey.Length);
+        shortKey.CopyTo(extendedKey, 0);
 
         while (length < MinimumKeyLength) {
             byte[] key = authProtocol.PasswordToKey(shortKey, engineID);
@@ -260,7 +244,8 @@ public class Privacy3DES : IPrivacyProtocol {
 		salt[6] = sl[1];
 		salt[5] = sl[2];
 		salt[4] = sl[3];
-		eb.Initialize();
+        CryptographicOperations.ZeroMemory(eb);
+        CryptographicOperations.ZeroMemory(sl);
 		return salt;
 	}
     /// <summary>
@@ -288,9 +273,8 @@ public class Privacy3DES : IPrivacyProtocol {
 			throw new SnmpPrivacyException("Invalid privacy secret length.");
 		}
 		byte[] encryptionKey = authProtocol.PasswordToKey(secret, engineId);
-		if (encryptionKey.Length < MinimumKeyLength) {
-			encryptionKey = ExtendShortKey(encryptionKey, secret, engineId, authProtocol);
-		}
-		return encryptionKey;
+		return encryptionKey.Length < MinimumKeyLength ?
+			ExtendShortKey(encryptionKey, secret, engineId, authProtocol) :
+		    encryptionKey;
 	}
 }
