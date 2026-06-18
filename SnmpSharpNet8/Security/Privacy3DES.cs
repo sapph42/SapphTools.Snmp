@@ -40,7 +40,7 @@ namespace SnmpSharpNet8.Security;
 /// the type/version/mode of the agent you are working with.
 /// </remarks>
 public class Privacy3DES : IPrivacyProtocol {
-	protected int _salt;
+    protected int _salt;
 
 	/// <summary>
 	/// TripleDES implementation supports extending of a short encryption key. Always returns true.
@@ -146,9 +146,10 @@ public class Privacy3DES : IPrivacyProtocol {
 			int engineBoots, 
 			int engineTime, 
 			out byte[] privacyParameters, 
-			Authentication authDigest
+			Authentication? authDigest
 		) {
-		byte[] privParamHash = authDigest.ComputeHash(GetSalt(engineBoots), 0, 8);
+        ArgumentNullException.ThrowIfNull(authDigest, nameof(authDigest));
+        byte[] privParamHash = authDigest.ComputeHash(GetSalt(engineBoots), 0, 8);
         privacyParameters = privParamHash[..8];
         byte[] tmpbuffer = new byte[GetEncryptedLength(length)];
         try {

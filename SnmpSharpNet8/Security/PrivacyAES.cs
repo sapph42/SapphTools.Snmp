@@ -138,7 +138,7 @@ public class PrivacyAES : IPrivacyProtocol {
             int engineBoots,
             int engineTime,
             out byte[] privacyParameters,
-            AuthenticationDigest _
+            Authentication? _ = null
         ) {
         if (key == null || key.Length < _keyBytes)
             throw new ArgumentOutOfRangeException(nameof(key), "Invalid key length");
