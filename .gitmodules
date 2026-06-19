@@ -1,0 +1,3 @@
+[submodule "Asn1"]
+	path = Asn1
+	url = https://github.com/sapph42/SapphTools.Asn1.git
