@@ -1,9 +1,12 @@
-﻿using SapphTools.Asn1.DataTypes;
+﻿using SapphTools.Asn1;
+using SapphTools.Asn1.DataTypes;
 
 namespace SnmpSharpNet8.Request;
 
-public class SnmpV2pRequest : ISnmpRequest {
-    public int Version => 1;
-    public OctetStringRaw Community { get; set; }
-    public object Pdu { get; set; }
+public class SnmpV2pRequest : ISnmpV2Request {
+    public int Version => 2;
+    public ObjectIdentifier DstParty { get; set; }
+    public ObjectIdentifier SrcParty { get; set; }
+    public ObjectIdentifier Context { get; set; }
+    public ISnmpRequest Pdu { get; set; }
 }
