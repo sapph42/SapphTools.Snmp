@@ -7,4 +7,12 @@ public class SnmpV2uRequest : ISnmpV2Request {
     public int Version => 2;
     public Parameters2u Parameters { get; set; }
     public IRequestPdu Pdu { get; set; }
+
+    public ReadOnlySpan<byte> Construct() {
+        return (byte[])[
+            ..BitConverter.GetBytes(Version),
+            ..Parameters.GetBytes(),
+            ..Pdu.ConstructRequest()
+        ];
+    }
 }

@@ -10,4 +10,12 @@ public class SnmpV2pRequest : ISnmpV2Request {
     public ObjectIdentifier Context { get; set; }
     public IRequestPdu Pdu { get; set; }
 
+    public ReadOnlySpan<byte> Construct() {
+        return (byte[])[
+            ..BitConverter.GetBytes(Version),
+            ..DstParty.Construct(),
+            ..SrcParty.Construct(),
+            ..Pdu.ConstructRequest()
+        ];
+    }
 }
