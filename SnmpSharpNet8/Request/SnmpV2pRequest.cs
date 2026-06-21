@@ -8,5 +8,6 @@ public class SnmpV2pRequest : ISnmpV2Request {
     public ObjectIdentifier DstParty { get; set; }
     public ObjectIdentifier SrcParty { get; set; }
     public ObjectIdentifier Context { get; set; }
-    public ISnmpRequest Pdu { get; set; }
+    public IRequestPdu Pdu { get; set; }
+
 }
