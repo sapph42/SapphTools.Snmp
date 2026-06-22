@@ -42,6 +42,7 @@ public class SnmpException : Exception {
     /// </summary>
     /// <param name="msg">SNMP Exception message</param>
     public SnmpException(string msg) : base(msg) { }
+    public SnmpException(string msg, Exception ex) : base(msg, ex) { }
     /// <summary>
     /// Constructor
     /// </summary>
@@ -50,12 +51,18 @@ public class SnmpException : Exception {
     public SnmpException(SnmpExceptionCodes errorCode, string msg) : base(msg) {
         _errorCode = errorCode;
     }
+    public SnmpException(SnmpExceptionCodes errorCode, string msg, Exception ex) : base(msg, ex) {
+        _errorCode = errorCode;
+    }
     /// <summary>
     /// Constructor
     /// </summary>
     /// <param name="errorCode">Error code associated with the exception</param>
     /// <param name="msg">Error message</param>
     public SnmpException(int errorCode, string msg) : base(msg) {
+        _errorCode = (SnmpExceptionCodes)errorCode;
+    }
+    public SnmpException(int errorCode, string msg, Exception ex) : base(msg, ex) {
         _errorCode = (SnmpExceptionCodes)errorCode;
     }
 }
