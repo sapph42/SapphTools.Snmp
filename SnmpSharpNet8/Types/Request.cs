@@ -50,8 +50,28 @@ public abstract class Request : ISnmpRequest {
         };
     }
 
+    public static SnmpV3Request CreateV3(string ip, AuthenticationDigest digest, PrivacyProtocol privacy, string userName, string contextEngineId = "") {
+        IPAddress ipAddress = IPAddress.Parse(ip);
+        OctetStringRaw securityName = new(userName);
+        MsgFlags flags = MsgFlags.Reportable;
+        //Requires import of Credential class from EAMC Tools installer codebase
+        Credential authCred;
+        Credential privCred;
+        if (digest != AuthenticationDigest.None) {
+            flags |= MsgFlags.Auth;
+            authCred = new();
+        }
+        if (privacy != PrivacyProtocol.None) {
+            flags |= MsgFlags.Priv;
+            privCred = new();
+        }
+        //Logic incomplete
+    }
+
+
     public abstract ReadOnlySpan<byte> Construct();
     public SnmpAsn1Structure? Send() {
+        //needs type check and possible pre-send Discovery
         ReadOnlySpan<byte> requestBytes = Construct();
         int recv = 0;
         int retry = 0;
