@@ -1,5 +1,7 @@
-﻿namespace SnmpSharpNet8.Request;
+﻿using SapphTools.Asn1.DataTypes;
+
+namespace SnmpSharpNet8.Request;
 
 public interface ISnmpRequest {
-    int Version { get; }
+    Integer Version { get; }
 }
