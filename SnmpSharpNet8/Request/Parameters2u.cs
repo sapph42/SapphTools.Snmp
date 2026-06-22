@@ -1,8 +1,9 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace SnmpSharpNet8.Request;
 
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly struct Parameters2u {
     public byte Model { get; init; }
     public byte QoS { get; init; }
@@ -36,18 +37,25 @@ public readonly struct Parameters2u {
         ContextSel = contextSel;
     }
     public readonly byte[] GetBytes() {
-        int size = Marshal.SizeOf(this);
-        byte[] arr = new byte[size];
-
-        IntPtr ptr = IntPtr.Zero;
-        try {
-            ptr = Marshal.AllocHGlobal(size);
-            Marshal.StructureToPtr(this, ptr, true);
-            Marshal.Copy(ptr, arr, 0, size);
-        } finally {
-            Marshal.FreeHGlobal(ptr);
-        }
-        return arr;
+        Span<byte> agentBoots = stackalloc byte[4];
+        Span<byte> agentTime = stackalloc byte[4];
+        Span<byte> maxSize = stackalloc byte[2];
+        BinaryPrimitives.WriteUInt32BigEndian(agentBoots, AgentBoots);
+        BinaryPrimitives.WriteUInt32BigEndian(agentTime, AgentTime);
+        BinaryPrimitives.WriteUInt16BigEndian(maxSize, MaxSize);
+        return [
+            Model,
+            QoS,
+            ..AgentId,
+            ..agentBoots.ToArray(),
+            ..agentTime.ToArray(),
+            ..maxSize.ToArray(),
+            UserLen,
+            ..UserName,
+            AuthLen,
+            ..AuthDigest,
+            ..ContextSel
+        ];
     }
 }
 
