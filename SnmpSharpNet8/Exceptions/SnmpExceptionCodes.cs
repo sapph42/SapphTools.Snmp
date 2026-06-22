@@ -95,5 +95,6 @@ public enum SnmpExceptionCodes {
     /// <summary>
     /// Specified Oid is invalid
     /// </summary>
-    InvalidOid = 18
+    InvalidOid = 18,
+    NetworkError = 19
 }
