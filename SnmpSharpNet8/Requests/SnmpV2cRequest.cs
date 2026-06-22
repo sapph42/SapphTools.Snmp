@@ -5,7 +5,7 @@ using System.Net;
 
 namespace SnmpSharpNet8.Requests;
 
-public class SnmpV2cRequest : Request, ISnmpV2Request {
+public class SnmpV2cRequest : Request {
     public override Integer Version => new([0x1]);
     public required OctetStringRaw Community { get; init; }
     public override required IRequestPdu Pdu { get; init; }
