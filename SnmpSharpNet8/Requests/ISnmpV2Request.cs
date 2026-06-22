@@ -1,7 +1,7 @@
 ﻿using SapphTools.Asn1;
 
-namespace SnmpSharpNet8.Request;
+namespace SnmpSharpNet8.Requests;
 
 public interface ISnmpV2Request : ISnmpRequest {
-    IRequestPdu Pdu { get; set; }
+    IRequestPdu Pdu { get; init; }
 }
