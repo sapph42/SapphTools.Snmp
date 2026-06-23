@@ -1,7 +1,7 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
 using SnmpSharpNet8.Exceptions;
-using SnmpSharpNet8.Requests;
+using SnmpSharpNet8.Messages;
 using SnmpSharpNet8.Security;
 using System.Formats.Asn1;
 using System.Net;

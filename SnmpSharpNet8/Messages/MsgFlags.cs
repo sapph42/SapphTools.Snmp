@@ -1,4 +1,4 @@
-﻿namespace SnmpSharpNet8.Requests;
+﻿namespace SnmpSharpNet8.Messages;
 
 [Flags]
 public enum MsgFlags : byte {

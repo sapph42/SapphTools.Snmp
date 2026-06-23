@@ -1,7 +1,7 @@
 ﻿using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
-namespace SnmpSharpNet8.Requests;
+namespace SnmpSharpNet8.Messages;
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly struct Parameters2u {

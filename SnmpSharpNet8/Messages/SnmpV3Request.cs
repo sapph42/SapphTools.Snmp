@@ -4,7 +4,7 @@ using SnmpSharpNet8.Types;
 using System.Net;
 using System.Formats.Asn1;
 
-namespace SnmpSharpNet8.Requests;
+namespace SnmpSharpNet8.Messages;
 
 public class SnmpV3Request : Request {
     private bool _didDiscovery = false;
