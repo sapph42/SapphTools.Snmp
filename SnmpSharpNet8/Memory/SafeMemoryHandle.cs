@@ -1,7 +1,7 @@
 ﻿using SnmpSharpNet8.Unsafe;
 using System.Runtime.InteropServices;
 
-namespace SnmpSharpNet8.Types;
+namespace SnmpSharpNet8.Memory;
 public class SafeMemoryHandle(IntPtr existingHandle, bool ownsHandle, uint length, SafeMemoryHandle.MemoryType type) : SafeHandle(existingHandle, ownsHandle) {
     public enum MemoryType {
         None,
