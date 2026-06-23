@@ -1,8 +1,8 @@
-﻿using SnmpSharpNet8.Types;
+﻿using SnmpSharpNet8.Memory;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace SnmpSharpNet8.Unsafe;
+namespace SnmpSharpNet8.Interop;
 internal static partial class CredApi {
     [Flags]
     public enum PromptFlags {
@@ -79,8 +79,8 @@ internal static partial class CredApi {
         public IntPtr hbmBanner;
     }
 
-    [LibraryImport("credui.dll", EntryPoint = "CredUIPromptForWindowsCredentialsW")]
-    private static partial uint CredUIPromptForWindowsCredentials(
+    [DllImport("credui.dll", EntryPoint = "CredUIPromptForWindowsCredentialsW")]
+    private extern static uint CredUIPromptForWindowsCredentials(
         ref CREDUI_INFO credUiInfo,
         int authError,
         ref uint authPackage,

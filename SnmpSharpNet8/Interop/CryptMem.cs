@@ -1,7 +1,7 @@
-﻿using SnmpSharpNet8.Types;
+﻿using SnmpSharpNet8.Memory;
 using System.Runtime.InteropServices;
 
-namespace SnmpSharpNet8.Unsafe;
+namespace SnmpSharpNet8.Interop;
 internal static partial class CryptMem {
     internal const uint CRYPTPROTECTMEMORY_SAME_PROCESS = 0;
     internal const uint CRYPTPROTECTMEMORY_BLOCK_SIZE = 16;

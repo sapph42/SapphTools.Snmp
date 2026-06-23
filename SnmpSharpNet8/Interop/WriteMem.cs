@@ -1,8 +1,8 @@
-﻿using SnmpSharpNet8.Types;
+﻿using SnmpSharpNet8.Memory;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace SnmpSharpNet8.Unsafe;
+namespace SnmpSharpNet8.Interop;
 internal static partial class WriteMem {
     public static SafeMemoryHandle MemCopy(SafeMemoryHandle src, UIntPtr count, uint destSize = 0) {
         if (src.IsInvalid) {
