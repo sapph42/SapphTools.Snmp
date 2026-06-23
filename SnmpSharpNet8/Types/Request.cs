@@ -2,9 +2,11 @@
 using SapphTools.Asn1.DataTypes;
 using SnmpSharpNet8.Exceptions;
 using SnmpSharpNet8.Requests;
+using SnmpSharpNet8.Security;
 using System.Formats.Asn1;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 
 
 namespace SnmpSharpNet8.Types; 
@@ -50,28 +52,56 @@ public abstract class Request : ISnmpRequest {
         };
     }
 
-    public static SnmpV3Request CreateV3(string ip, AuthenticationDigest digest, PrivacyProtocol privacy, string userName, string contextEngineId = "") {
+    public static SnmpV3Request CreateV3(
+        string ip, 
+        AuthenticationDigest digest, 
+        PrivacyProtocol privacy, 
+        string userName, 
+        string[] oids, 
+        string contextEngineId = "", 
+        int port = 161, 
+        int timeout = 0, 
+        int retries = 0
+    ) {
         IPAddress ipAddress = IPAddress.Parse(ip);
         OctetStringRaw securityName = new(userName);
         MsgFlags flags = MsgFlags.Reportable;
-        //Requires import of Credential class from EAMC Tools installer codebase
         Credential authCred;
         Credential privCred;
         if (digest != AuthenticationDigest.None) {
             flags |= MsgFlags.Auth;
-            authCred = new();
+            authCred = new(null, "Enter authSecret:", userName);
         }
         if (privacy != PrivacyProtocol.None) {
             flags |= MsgFlags.Priv;
-            privCred = new();
+            privCred = new(null, "Enter privSecret:", userName);
         }
-        //Logic incomplete
+        Asn1Tag requestTag = new(TagClass.ContextSpecific, 0);
+        int requestId = new Random((int)DateTime.Now.Ticks).Next();
+        List<VarBinding> vbs = [];
+        Asn1Null nullVal = new();
+        foreach (string oid in oids) {
+            ObjectIdentifier oidNode = new(new OidStruct(oid));
+            VarBinding vb = new([], oidNode, nullVal);
+            vbs.Add(vb);
+        }
+        SnmpPdu pdu = new([], requestTag, requestId, 0, 0, vbs);
+        ScopedPdu sPdu = new() {
+            ContextEngineId = new(new Random((int)DateTime.Now.Ticks).Next().ToString()),
+            ContextName = new(""),
+            RequestPdu = pdu
+        };
+        return new(ipAddress, port, timeout, retries) {
+            ScopedPdu = sPdu,
+        };
     }
 
 
     public abstract ReadOnlySpan<byte> Construct();
     public SnmpAsn1Structure? Send() {
-        //needs type check and possible pre-send Discovery
+        if (this is SnmpV3Request v3) {
+            v3.Discover();
+        }
         ReadOnlySpan<byte> requestBytes = Construct();
         int recv = 0;
         int retry = 0;
