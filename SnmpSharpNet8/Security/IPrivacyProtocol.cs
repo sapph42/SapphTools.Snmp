@@ -57,7 +57,7 @@ public interface IPrivacyProtocol {
     /// <param name="engineTime">Authoritative engine time value. Retrieved as part of SNMP v3 discovery procedure</param>
     /// <param name="privacyParameters">Privacy parameters parsed from the incoming packet.</param>
     /// <returns>Byte array containing decrypted <see cref="ScopedPdu"/> in BER encoded format.</returns>
-    byte[] Decrypt(byte[] cryptedData, int offset, int length, byte[] key, int engineBoots, int engineTime, byte[] privacyParameters);
+    byte[] Decrypt(byte[] cryptedData, byte[] key, int engineBoots, int engineTime, byte[] privacyParameters);
 
     /// <summary>
     /// Encrypt <see cref="ScopedPdu"/> data BER encoded in a byte array.
@@ -73,7 +73,7 @@ public interface IPrivacyProtocol {
     /// <param name="authDigest">Authentication digest class reference. Only needed for TripleDES privacy protocol. Can be null for all other
     /// privacy protocols.</param>
     /// <returns>Byte array containing encrypted <see cref="ScopedPdu"/> BER encoded data</returns>
-    byte[] Encrypt(byte[] unencryptedData, int offset, int length, byte[] encryptionKey, int engineBoots, int engineTime, out byte[] privacyParameters, Authentication? authDigest);
+    byte[] Encrypt(byte[] unencryptedData, byte[] encryptionKey, int engineBoots, int engineTime, out byte[] privacyParameters, Authentication? authDigest);
 
 	/// <summary>Extend short encryption key</summary>
 	/// <remarks>
