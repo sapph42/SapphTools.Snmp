@@ -1,7 +1,7 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
 
-namespace SnmpSharpNet8.Types;
+namespace SnmpSharpNet8.Pdu;
 
 public class ScopedPdu {
     public OctetStringRaw ContextEngineId { get; init; }

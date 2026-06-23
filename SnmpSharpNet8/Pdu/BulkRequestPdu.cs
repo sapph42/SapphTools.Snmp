@@ -1,7 +1,7 @@
 ﻿using SapphTools.Asn1;
 using System.Formats.Asn1;
 
-namespace SnmpSharpNet8.Types;
+namespace SnmpSharpNet8.Pdu;
 
 public sealed class BulkRequestPdu : Asn1Node, IRequestPdu {
     public override IReadOnlyList<IAsn1Node>? Children => VarBindings;
