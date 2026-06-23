@@ -4,7 +4,7 @@ using System.Formats.Asn1;
 namespace SnmpSharpNet8.Types;
 
 public sealed class BulkRequestPdu : Asn1Node, IRequestPdu {
-    public override IReadOnlyList<IAsnNode>? Children => VarBindings;
+    public override IReadOnlyList<IAsn1Node>? Children => VarBindings;
     public Asn1Tag PduType { get; init; }
     public long RequestId { get; init; }
     public int NonRepeaters { get; init; }
