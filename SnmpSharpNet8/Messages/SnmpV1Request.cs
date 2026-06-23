@@ -1,6 +1,5 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
-using SnmpSharpNet8.Types;
 using System.Net;
 
 namespace SnmpSharpNet8.Messages; 

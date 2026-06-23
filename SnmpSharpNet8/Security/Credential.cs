@@ -1,4 +1,4 @@
-﻿using SnmpSharpNet8.Types;
+﻿using SnmpSharpNet8.Messages;
 using SnmpSharpNet8.Unsafe;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;

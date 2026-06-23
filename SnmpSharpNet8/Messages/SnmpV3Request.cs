@@ -1,8 +1,8 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
-using SnmpSharpNet8.Types;
 using System.Net;
 using System.Formats.Asn1;
+using SnmpSharpNet8.Pdu;
 
 namespace SnmpSharpNet8.Messages;
 
