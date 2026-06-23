@@ -20,14 +20,14 @@ using System.Security.Cryptography;
 namespace SnmpSharpNet8.Security;
 /// <summary>AES privacy protocol implementation class.</summary>
 public class PrivacyAES : IPrivacyProtocol {
-	/// <summary>
-	/// Salt value
-	/// </summary>
-	protected long _salt = 0;
-	/// <summary>
-	/// AES protocol key bytes. Valid values are 16 (for AES128), 24 (AES192) or 32 (AES256).
-	/// </summary>
-	protected int _keyBytes = 16; // Default is 128bit AES protocol
+    /// <summary>
+    /// Salt value
+    /// </summary>
+    protected long _salt = Random.Shared.NextInt64();
+    /// <summary>
+    /// AES protocol key bytes. Valid values are 16 (for AES128), 24 (AES192) or 32 (AES256).
+    /// </summary>
+    protected int _keyBytes = 16; // Default is 128bit AES protocol
 
     /// <summary>
     /// AES implementation supports extending of a short encryption key. Always returns true.
@@ -76,8 +76,6 @@ public class PrivacyAES : IPrivacyProtocol {
     /// <returns>Byte array containing decrypted <see cref="ScopedPdu"/> in BER encoded format.</returns>
     public byte[] Decrypt(
             byte[] encryptedData,
-            int offset,
-            int length,
             byte[] key,
             int engineBoots,
             int engineTime,
@@ -105,12 +103,12 @@ public class PrivacyAES : IPrivacyProtocol {
             using ICryptoTransform cryptor = rm.CreateDecryptor();
 
             if ((encryptedData.Length % _keyBytes) != 0) {
-                int paddedLength = (length + 15) / 16 * 16;
+                int paddedLength = (encryptedData.Length + 15) / 16 * 16;
                 byte[] decryptBuffer = new byte[paddedLength];
-                encryptedData.AsSpan(offset, length).CopyTo(decryptBuffer);
-                return cryptor.TransformFinalBlock(decryptBuffer, 0, paddedLength)[..length];
+                encryptedData.AsSpan(0, encryptedData.Length).CopyTo(decryptBuffer);
+                return cryptor.TransformFinalBlock(decryptBuffer, 0, paddedLength)[..encryptedData.Length];
             }
-            return cryptor.TransformFinalBlock(encryptedData, offset, length);
+            return cryptor.TransformFinalBlock(encryptedData, 0, encryptedData.Length);
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was decrypting data.", ex);
         } finally {
@@ -132,8 +130,6 @@ public class PrivacyAES : IPrivacyProtocol {
     /// <returns>Byte array containing encrypted <see cref="ScopedPdu"/> BER encoded data</returns>
     public byte[] Encrypt(
             byte[] unencryptedData,
-            int offset,
-            int length,
             byte[] key,
             int engineBoots,
             int engineTime,
@@ -144,6 +140,7 @@ public class PrivacyAES : IPrivacyProtocol {
             throw new ArgumentOutOfRangeException(nameof(key), "Invalid key length");
 
         byte[] iv = new byte[16];
+        byte[] pkey = new byte[MinimumKeyLength];
         long salt = NextSalt();
         BinaryPrimitives.WriteInt32BigEndian(iv.AsSpan(0, 4), engineBoots);
         BinaryPrimitives.WriteInt32BigEndian(iv.AsSpan(4, 4), engineTime);
@@ -157,17 +154,17 @@ public class PrivacyAES : IPrivacyProtocol {
             rm.BlockSize = 128;
             rm.Padding = PaddingMode.Zeros;
             rm.Mode = CipherMode.CFB;
-            byte[] pkey = new byte[MinimumKeyLength];
             key.CopyTo(pkey, 0);
             rm.Key = pkey;
             rm.IV = iv;
             return rm
                 .CreateEncryptor()
-                .TransformFinalBlock(unencryptedData, offset, length)[..unencryptedData.Length];
+                .TransformFinalBlock(unencryptedData, 0, unencryptedData.Length)[..unencryptedData.Length];
         } catch (Exception ex) {
-            throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was decrypting data.", ex);
+            throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was encrypting data.", ex);
         } finally {
             CryptographicOperations.ZeroMemory(iv);
+            CryptographicOperations.ZeroMemory(pkey);
         }
     }
     /// <summary>
@@ -213,11 +210,9 @@ public class PrivacyAES : IPrivacyProtocol {
     /// </summary>
     /// <returns>Random Int64 value</returns>
     protected long NextSalt() {
-		_salt = _salt == long.MaxValue ?
-			_salt = 1 :
-			_salt += 1;
-		return _salt;
-	}
+        long next = Interlocked.Increment(ref _salt);
+        return next;
+    }
 	/// <summary>
 	/// Convert privacy password into encryption key using packet authentication hash.
 	/// </summary>
