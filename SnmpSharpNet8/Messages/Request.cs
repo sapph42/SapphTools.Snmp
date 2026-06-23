@@ -1,7 +1,7 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
 using SnmpSharpNet8.Exceptions;
-using SnmpSharpNet8.Messages;
+using SnmpSharpNet8.Pdu;
 using SnmpSharpNet8.Security;
 using System.Formats.Asn1;
 using System.Net;
@@ -9,7 +9,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 
 
-namespace SnmpSharpNet8.Types; 
+namespace SnmpSharpNet8.Messages; 
 public abstract class Request : ISnmpRequest {
     protected Socket _socket;
     protected bool _socketDisposed = false;
