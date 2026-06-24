@@ -6,14 +6,16 @@ namespace SnmpSharpNet8.Interop;
 internal static partial class CredApi {
     [Flags]
     public enum PromptFlags {
-        CREDUIWIN_GENERIC                = 0x00000001,
-        CREDUIWIN_CHECKBOX               = 0x00000002,
-        CREDUIWIN_AUTHPACKAGE_ONLY       = 0x00000010,
-        CREDUIWIN_IN_CRED_ONLY           = 0x00000020,
-        CREDUIWIN_ENUMERATE_ADMINS       = 0x00000100,
-        CREDUIWIN_ENUMERATE_CURRENT_USER = 0x00000200,
-        CREDUIWIN_SECURE_PROMPT          = 0x00001000,
-        CREDUIWIN_PACK_32_WOW            = 0x10000000
+        CREDUIWIN_GENERIC                   = 0x00000001,
+        CREDUIWIN_CHECKBOX                  = 0x00000002,
+        CREDUIWIN_AUTHPACKAGE_ONLY          = 0x00000010,
+        CREDUIWIN_IN_CRED_ONLY              = 0x00000020,
+        CREDUIWIN_ENUMERATE_ADMINS          = 0x00000100,
+        CREDUIWIN_ENUMERATE_CURRENT_USER    = 0x00000200,
+        CREDUIWIN_SECURE_PROMPT             = 0x00001000,
+        CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY = 0x00040000,
+        CREDUIWIN_PACK_32_WOW               = 0x10000000,
+        BASIC                               = CREDUIWIN_GENERIC | CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY;
     }
     public struct CredentialPack {
         public StringBuilder UserName;
