@@ -91,6 +91,26 @@ internal static partial class CredApi {
         [MarshalAs(UnmanagedType.Bool)] ref bool fSave,
         PromptFlags flags
     );
+    public static int GetPassLength(SafeMemoryHandle authBuffer) {
+        if (authBuffer.IsInvalid) {
+            return -1;
+        }
+        int userLength = 0;
+        int domainLength = 0;
+        int passLength = 0;
+        _ = CredUnPackAuthenticationBuffer(
+            0,
+            authBuffer.DangerousGetHandle(),
+            authBuffer.Length,
+            null,
+            ref userLength,
+            null,
+            ref domainLength,
+            IntPtr.Zero,
+            ref passLength
+        );
+        return passLength;
+    }
     public static CredentialPack UnpackAuthBuffer(SafeMemoryHandle authBuffer, bool includePassword) {
         if (authBuffer.IsInvalid) {
             return new CredentialPack();
