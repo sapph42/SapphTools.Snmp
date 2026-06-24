@@ -1,27 +1,7 @@
-﻿// This file is part of SNMP#NET8.
-// 
-// SNMP#NET8 is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-// 
-// SNMP#NET8 is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-// 
-// You should have received a copy of the GNU General Public License
-// along with SNMP#NET8.  If not, see <http://www.gnu.org/licenses/>.
-// 
-using SnmpSharpNet8.Exceptions;
-using SnmpSharpNet8.Types;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 
 namespace SnmpSharpNet8.Security;
-/// <summary>
-/// Authentication digest interface. Interface defines authentication methods
-/// for incoming and outgoing requests.
-/// </summary>
+
 public class Authentication {
     private readonly int authenticationLength;
     private readonly HashAlgorithmName _hashName;
@@ -40,31 +20,27 @@ public class Authentication {
         };
         Name = $"HMAC-{_hashName.Name}";
     }
-    public byte[] Authenticate(byte[] password, byte[] engineId, byte[] wholeMessage) {
-        byte[] key = PasswordToKey(password, engineId);
+    public ReadOnlySpan<byte> Authenticate(byte[] key, ReadOnlySpan<byte> wholeMessage) {
         using IncrementalHash hmac = IncrementalHash.CreateHMAC(_hashName, key);
         hmac.AppendData(wholeMessage);
-        byte[] full = hmac.GetHashAndReset();
+        ReadOnlySpan<byte> full = hmac.GetHashAndReset();
         return full[..AuthHeaderLength];
     }
 
     public bool AuthenticateIncomingMsg(
-            byte[] authenticationSecret,
-            byte[] engineId,
-            byte[] authenticationParameters,   // the digest extracted from the received message
-            byte[] wholeMessage) {              // MUST already have the auth field zeroed
-        byte[] authKey = PasswordToKey(authenticationSecret, engineId);
-
-        using var hmac = IncrementalHash.CreateHMAC(_hashName, authKey);
+            byte[] key,
+            ReadOnlySpan<byte> authenticationParameters,   // the digest extracted from the received message
+            ReadOnlySpan<byte> wholeMessage) {              // MUST already have the auth field zeroed
+        using var hmac = IncrementalHash.CreateHMAC(_hashName, key);
         hmac.AppendData(wholeMessage);
-        byte[] computed = hmac.GetHashAndReset();
+        ReadOnlySpan<byte> computed = hmac.GetHashAndReset();
 
         return CryptographicOperations.FixedTimeEquals(
-            computed.AsSpan(0, AuthHeaderLength),
-            authenticationParameters.AsSpan(0, AuthHeaderLength));
+            computed[..AuthHeaderLength],
+            authenticationParameters[..AuthHeaderLength]);
     }
 
-    public byte[] PasswordToKey(byte[] password, byte[] engineId) {
+    public byte[] PasswordToKey(byte[] password, ReadOnlySpan<byte> engineId) {
         using var inc = IncrementalHash.CreateHash(_hashName);
         byte[] buf = new byte[64];
         int produced = 0;
