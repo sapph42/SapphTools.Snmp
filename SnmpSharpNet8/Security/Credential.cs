@@ -1,6 +1,8 @@
-﻿using SnmpSharpNet8.Messages;
-using SnmpSharpNet8.Unsafe;
-using System.Diagnostics.CodeAnalysis;
+﻿using SnmpSharpNet8.Interop;
+using SnmpSharpNet8.Memory;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace SnmpSharpNet8.Security;
@@ -9,6 +11,7 @@ public sealed class Credential : IDisposable {
 
     private bool _disposedValue;
     private SafeMemoryHandle _credHandle;
+    private SafeMemoryHandle _keyHandle = SafeMemoryHandle.Zero;
     private bool _isEncrypted = false;
 
     public CredentialType Type { get; private set; }
@@ -73,7 +76,7 @@ public sealed class Credential : IDisposable {
     public Credential(IntPtr? callerHandle, string promptText, string? userName = null) {
         try {
             using SafeMemoryHandle prePack = CredApi.PackCredential(userName);
-            _credHandle = CredApi.WindowsCredentialsPrompt(promptText, callerHandle, prePack, CredApi.PromptFlags.CREDUIWIN_GENERIC);
+            _credHandle = CredApi.WindowsCredentialsPrompt(promptText, callerHandle, prePack, CredApi.PromptFlags.BASIC);
             EncryptCred();
             _isEncrypted = true;
             Type = CredentialType.User;
@@ -98,12 +101,194 @@ public sealed class Credential : IDisposable {
         Type = type;
         _credHandle = type switch {
             CredentialType.SecretOnly => CredApi.PackCredential("N/A"),
-            CredentialType.Gmsa => _credHandle = CredApi.PackCredential(Regex.Replace(userName, @"^(?:MHS\\)?([^$\r\n]*)(?:\$?)$", @"MHS\$1$")),
-            CredentialType.OtherWellKnown => _credHandle = CredApi.PackCredential(Regex.Replace(userName, @"^(?!NT AUTHORITY)(.*)", @"NT AUTHORITY\$1")),
+            CredentialType.User => CredApi.PackCredential(userName),
             _ => SafeMemoryHandle.Zero
         };
         EncryptCred();
         _isEncrypted = true;
+    }
+    public bool Authenticate(ReadOnlySpan<byte> authenticationParameters, ReadOnlySpan<byte> wholeMessage, Authentication algo) {
+        if (_keyHandle.IsInvalid) {
+            return false;
+        }
+        _gate.Wait();
+        try {
+            if (_isEncrypted) {
+                DecryptKey();
+                _isEncrypted = false;
+            }
+            byte[] key = new byte[_keyHandle.Length];
+            try {
+                Marshal.Copy(_keyHandle.DangerousGetHandle(), key, 0, key.Length);
+                return algo.AuthenticateIncomingMsg(key, authenticationParameters, wholeMessage);
+            } finally {
+                CryptographicOperations.ZeroMemory(key);
+            }
+        } finally {
+            EncryptKey();
+            _isEncrypted = true;
+            _gate.Release();
+        }
+    }
+    public ReadOnlySpan<byte> Decrypt(byte[] encryptedBytes, int engineBoots, int engineTime, IPrivacyProtocol algo, Span<byte> privParams) {
+        if (_keyHandle.IsInvalid) {
+            return [];
+        }
+        _gate.Wait();
+        try {
+            if (_isEncrypted) {
+                DecryptKey();
+                _isEncrypted = false;
+            }
+            byte[] key = new byte[_keyHandle.Length];
+            try {
+                Marshal.Copy(_keyHandle.DangerousGetHandle(), key, 0, key.Length);
+                return algo.Decrypt(
+                    encryptedBytes,
+                    key,
+                    engineBoots,
+                    engineTime,
+                    privParams
+                );
+            } finally {
+                CryptographicOperations.ZeroMemory(key);
+            }
+        } finally {
+            EncryptKey();
+            _isEncrypted = true;
+            _gate.Release();
+        }
+    }
+    public ReadOnlySpan<byte> Encrypt(byte[] clearBytes, byte[] engineId, int engineBoots, int engineTime, IPrivacyProtocol algo, out Span<byte> privParams) {
+        if (_credHandle.IsInvalid) {
+            privParams = [];
+            return [];
+        }
+        _gate.Wait();
+        try {
+            if (_isEncrypted) {
+                if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
+                    StoreKey(algo, engineId);
+                }
+                DecryptKey();
+                _isEncrypted = false;
+            }
+            byte[] key = new byte[_keyHandle.Length];
+            try {
+                Marshal.Copy(_keyHandle.DangerousGetHandle(), key, 0, key.Length);
+                return algo.Encrypt(
+                    clearBytes,
+                    key,
+                    engineBoots,
+                    engineTime,
+                    out privParams
+                );
+            } finally {
+                CryptographicOperations.ZeroMemory(key);
+            }
+        } finally {
+            EncryptKey();
+            _isEncrypted = true;
+            _gate.Release();
+        }
+    }
+    public ReadOnlySpan<byte> GenerateHash(ReadOnlySpan<byte> wholeMessage, ReadOnlySpan<byte> engineId, Authentication algo) {
+        if (_credHandle.IsInvalid) {
+            return [];
+        }
+        _gate.Wait();
+        try {
+            if (_isEncrypted) {
+                if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
+                    StoreKey(algo, engineId);
+                }
+                DecryptKey();
+                _isEncrypted = false;
+            }
+            byte[] key = new byte[_keyHandle.Length];
+            try {
+                Marshal.Copy(_keyHandle.DangerousGetHandle(), key, 0, key.Length);
+                return algo.Authenticate(key, wholeMessage);
+            } finally {
+                CryptographicOperations.ZeroMemory(key);
+            }
+        } finally {
+            EncryptKey();
+            _isEncrypted = true;
+            _gate.Release();
+        }
+    }
+    private void StoreKey(Authentication algo, ReadOnlySpan<byte> engineId) {
+        if (_credHandle.IsInvalid) {
+            return;
+        }
+        _gate.Wait();
+        try {
+            if (_isEncrypted) {
+                DecryptCred();
+            }
+            _isEncrypted = false;
+            using CredProxy proxy = new(_credHandle);
+            int secretLen = CredApi.GetPassLength(_credHandle);
+            char[] chars = new char[secretLen];
+            byte[] secret = [];
+            byte[] key = new byte[algo.AuthHeaderLength];
+            try {
+                using SafeMemoryHandle pass = proxy.GetPassword();
+                Marshal.Copy(pass.DangerousGetHandle(), chars, 0, secretLen);
+                int byteCount = Encoding.ASCII.GetByteCount(chars);
+                secret = new byte[byteCount];
+                Encoding.ASCII.GetBytes(chars, secret);
+                key = algo.PasswordToKey(secret, engineId);
+                _keyHandle = SafeMemoryHandle.CreateCoTaskMem((uint)(key.Length + 1));
+                Marshal.Copy(key, 0, _keyHandle.DangerousGetHandle(), key.Length + 1);
+            } finally {
+                CryptographicOperations.ZeroMemory(secret);
+                CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes<char>(chars));
+                CryptographicOperations.ZeroMemory(key);
+            }
+        } finally {
+            EncryptCred();
+            EncryptKey();
+            _isEncrypted = true;
+            _gate.Release();
+        }
+    }
+    private void StoreKey(IPrivacyProtocol algo, byte[] engineId) {
+        if (_credHandle.IsInvalid) {
+            return;
+        }
+        _gate.Wait();
+        try {
+            if (_isEncrypted) {
+                DecryptCred();
+            }
+            _isEncrypted = false;
+            using CredProxy proxy = new(_credHandle);
+            int secretLen = CredApi.GetPassLength(_credHandle);
+            char[] chars = new char[secretLen];
+            byte[] secret = [];
+            byte[] key = new byte[algo.MinimumKeyLength];
+            try {
+                using SafeMemoryHandle pass = proxy.GetPassword();
+                Marshal.Copy(pass.DangerousGetHandle(), chars, 0, secretLen);
+                int byteCount = Encoding.ASCII.GetByteCount(chars);
+                secret = new byte[byteCount];
+                Encoding.ASCII.GetBytes(chars, secret);
+                key = algo.PasswordToKey(secret, engineId);
+                _keyHandle = SafeMemoryHandle.CreateCoTaskMem((uint)(key.Length + 1));
+                Marshal.Copy(key, 0, _keyHandle.DangerousGetHandle(), key.Length + 1);
+            } finally {
+                CryptographicOperations.ZeroMemory(secret);
+                CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes<char>(chars));
+                CryptographicOperations.ZeroMemory(key);
+            }
+        } finally {
+            EncryptCred();
+            EncryptKey();
+            _isEncrypted = true;
+            _gate.Release();
+        }
     }
     public T? WithCredProxy<T>(Func<ICredBuffer, T> func) {
         if (_credHandle.IsInvalid) {
@@ -164,6 +349,24 @@ public sealed class Credential : IDisposable {
         }
         try {
             _credHandle = _credHandle.Encrypt(true);
+            _isEncrypted = true;
+        } catch { }
+    }
+    private void DecryptKey() {
+        if (_keyHandle.IsInvalid || !_isEncrypted) {
+            return;
+        }
+        try {
+            _keyHandle.Decrypt();
+            _isEncrypted = false;
+        } catch { }
+    }
+    private void EncryptKey() {
+        if (_keyHandle.IsInvalid || _isEncrypted) {
+            return;
+        }
+        try {
+            _keyHandle = _keyHandle.Encrypt(true);
             _isEncrypted = true;
         } catch { }
     }
