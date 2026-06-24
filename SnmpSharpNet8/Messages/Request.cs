@@ -3,11 +3,10 @@ using SapphTools.Asn1.DataTypes;
 using SnmpSharpNet8.Exceptions;
 using SnmpSharpNet8.Pdu;
 using SnmpSharpNet8.Security;
+using System.Diagnostics;
 using System.Formats.Asn1;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
-
 
 namespace SnmpSharpNet8.Messages; 
 public abstract class Request : ISnmpRequest {
@@ -51,33 +50,68 @@ public abstract class Request : ISnmpRequest {
             Pdu = pdu,
         };
     }
-
     public static SnmpV3Request CreateV3(
-        string ip, 
-        AuthenticationDigest digest, 
-        PrivacyProtocol privacy, 
-        string userName, 
-        string[] oids, 
-        string contextEngineId = "", 
-        int port = 161, 
-        int timeout = 0, 
+        string ip,
+        string userName,
+        string[] oids,
+        string contextEngineId = "",
+        int port = 161,
+        int timeout = 0,
+        int retries = 0
+    ) => CreateV3Internal(ip, null, null, userName, oids, contextEngineId, port, timeout, retries);
+    public static SnmpV3Request CreateV3(
+        string ip,
+        AuthenticationDigest digest,
+        string userName,
+        string[] oids,
+        string contextEngineId = "",
+        int port = 161,
+        int timeout = 0,
+        int retries = 0
+    ) => CreateV3Internal(ip, digest, null, userName, oids, contextEngineId, port, timeout, retries);
+    public static SnmpV3Request CreateV3(
+        string ip,
+        AuthenticationDigest digest,
+        PrivacyProtocol privacy,
+        string userName,
+        string[] oids,
+        string contextEngineId = "",
+        int port = 161,
+        int timeout = 0,
+        int retries = 0
+    ) => CreateV3Internal(ip, digest, privacy, userName, oids, contextEngineId, port, timeout, retries);
+    private static SnmpV3Request CreateV3Internal(
+        string ip,
+        AuthenticationDigest? digest,
+        PrivacyProtocol? privacy,
+        string userName,
+        string[] oids,
+        string contextEngineId = "",
+        int port = 161,
+        int timeout = 0,
         int retries = 0
     ) {
+        MsgFlags flags;
+        if (digest is null && privacy is null) {
+            flags = MsgFlags.NoAuthNoPrivRep;
+        } else if (digest is null) {
+            throw new UnreachableException();
+        } else if (privacy is null) {
+            flags = MsgFlags.AuthNoPrivRep;
+        } else {
+            flags = MsgFlags.AuthPrivRep;
+        }
         IPAddress ipAddress = IPAddress.Parse(ip);
-        OctetStringRaw securityName = new(userName);
-        MsgFlags flags = MsgFlags.Reportable;
-        Credential authCred;
-        Credential privCred;
+        Credential? authCred = null;
+        Credential? privCred = null;
         if (digest != AuthenticationDigest.None) {
-            flags |= MsgFlags.Auth;
             authCred = new(null, "Enter authSecret:", userName);
         }
         if (privacy != PrivacyProtocol.None) {
-            flags |= MsgFlags.Priv;
             privCred = new(null, "Enter privSecret:", userName);
         }
-        Asn1Tag requestTag = new(TagClass.ContextSpecific, 0);
-        int requestId = new Random((int)DateTime.Now.Ticks).Next();
+        Asn1Tag requestTag = new(TagClass.ContextSpecific, 0, true);
+        int requestId = Random.Shared.Next();
         List<VarBinding> vbs = [];
         Asn1Null nullVal = new();
         foreach (string oid in oids) {
@@ -87,16 +121,17 @@ public abstract class Request : ISnmpRequest {
         }
         SnmpPdu pdu = new([], requestTag, requestId, 0, 0, vbs);
         ScopedPdu sPdu = new() {
-            ContextEngineId = new(new Random((int)DateTime.Now.Ticks).Next().ToString()),
-            ContextName = new(""),
+            ContextEngineId = new(contextEngineId),
+            ContextName = new(string.Empty),
             RequestPdu = pdu
         };
-        return new(ipAddress, port, timeout, retries) {
+        return new(ipAddress, port, timeout, retries, flags) {
             ScopedPdu = sPdu,
+            AuthCred = authCred,
+            PrivCred = privCred,
+            _msgUserName = new(userName)
         };
     }
-
-
     public abstract ReadOnlySpan<byte> Construct();
     public SnmpAsn1Structure? Send() {
         if (this is SnmpV3Request v3) {
