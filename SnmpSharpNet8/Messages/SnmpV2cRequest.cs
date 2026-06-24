@@ -22,3 +22,6 @@ public class SnmpV2cRequest : Request {
     }
     internal SnmpV2cRequest(IPAddress target, int port, int timeout, int retries) : base(target, port, timeout, retries) { }
 }
+public class SnmpV2Request : SnmpV2cRequest {
+    internal SnmpV2Request(IPAddress target, int port, int timeout, int retries) : base(target, port, timeout, retries) { }
+}
