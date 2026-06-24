@@ -1,8 +1,9 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
-using System.Net;
-using System.Formats.Asn1;
 using SnmpSharpNet8.Pdu;
+using SnmpSharpNet8.Security;
+using System.Formats.Asn1;
+using System.Net;
 
 namespace SnmpSharpNet8.Messages;
 
@@ -13,47 +14,54 @@ public class SnmpV3Request : Request {
     private OctetStringRaw _msgAuthoritativeEngineID = new([]);
     private Integer _msgAuthoritativeEngineBoots = new(0);
     private Integer _msgAuthoritativeEngineTime = new(0);
-    private OctetStringRaw _msgUserName = new([]);
+    internal OctetStringRaw _msgUserName = new([]);
     private OctetStringRaw _msgAuthenticationParameters = new(new byte[12]);
     private OctetStringRaw _msgPrivacyParameters = new([]);
 
+    internal Credential? AuthCred;
+    internal Credential? PrivCred;
+    internal MsgFlags Flags = MsgFlags.None;
+
     public override Integer Version => new([0x3]);
-    public MsgFlags Flags { get; set; } = MsgFlags.None;
     public override IRequestPdu Pdu { get; init; } = new SnmpPdu([], new Asn1Tag(UniversalTagNumber.Null), 0, 0, 0, []);
     public required ScopedPdu ScopedPdu { get; init; }
+    internal SnmpV3Request(IPAddress ip, int port, int timeout, int retries, MsgFlags flags) : base(ip, port, timeout, retries) {
+        Flags = flags;
+    }
+    public SnmpAsn1Structure? Get() {
+        SnmpAsn1Structure? resp = null;
+        if (!_didDiscovery) {
+            resp = Discover();
+        }
+        return resp;
+    }
+    public SnmpAsn1Structure? Discover() {
+        ReadOnlySpan<byte> package = Construct();
+        _socket.Send(package);
+        Span<byte> response = stackalloc byte[ushort.MaxValue];
+        var bytesRead = _socket.Receive(response);
+        response = response[..bytesRead];
+        _didDiscovery = true;
+        return Parser.ParseSnmp(response);
+    }
     public override ReadOnlySpan<byte> Construct() {
+        if (_msgAuthoritativeEngineID.Value == "" | _msgAuthoritativeEngineBoots.Value == 0 | _msgAuthoritativeEngineTime.Value == 0) {
+            _didDiscovery = false;
+        }
         Sequence msgGlobalData = BuildMsgGlobalData();
         Sequence usmSecurityParameters = BuildUsmSecurityParameters();
         OctetStringRaw msgSecurityParameters = new(usmSecurityParameters.Construct());
-
-        byte[] pduBytes = ScopedPdu.ConstructRequest();
-        if ((Flags & MsgFlags.Priv) == MsgFlags.Priv && _didDiscovery) {
-            pduBytes = SomeCryptoCall(pduBytes, otherThings, out byte [] msgPrivacyParameters);
-            _msgPrivacyParameters = new OctetStringRaw(msgPrivacyParameters);
-            OctetStringRaw cypherPdu = new(pduBytes);
-            pduBytes = [..cypherPdu.Construct()];
-        }
-        
-        byte[] payload = [
-            ..Version.Construct(),
-            ..msgGlobalData.Construct(),
-            ..msgSecurityParameters.Construct(),
-            ..pduBytes
-        ];
-        byte[] request = [
-            0x30,
-            ..IDataType.EncodeLength(payload.Length),
-            ..payload
-        ];
-        // CHECK FLAGS - HASH HERE 
-        if ((Flags & MsgFlags.Auth) == MsgFlags.Auth && _didDiscovery) {
-            _msgAuthenticationParameters = new(SomeHashCall(request));
-            msgSecurityParameters = new(usmSecurityParameters.Construct());
+        ReadOnlySpan<byte> pduBytes = ScopedPdu.ConstructRequest();
+        int reqId;
+        byte[] payload;
+        byte[] request;
+        if (!_didDiscovery) {
+            pduBytes = ScopedPdu.DiscoveryScopedPdu(out reqId).ConstructRequest();
             payload = [
                 ..Version.Construct(),
                 ..msgGlobalData.Construct(),
                 ..msgSecurityParameters.Construct(),
-                ..pduBytes
+                   ..pduBytes
             ];
             return (byte[])[
                 0x30,
@@ -61,20 +69,53 @@ public class SnmpV3Request : Request {
                 ..payload
             ];
         } else {
-            return request;
+            reqId = (int)Math.Clamp(ScopedPdu.RequestPdu.RequestId, 0, int.MaxValue);
         }
-    }
-    internal SnmpV3Request(IPAddress target, int port, int timeout, int retries) : base(target, port, timeout, retries) { }
-    internal void Discover(bool force = false) {
-        if (_didDiscovery && !force) {
-            return;
-        }
+        // Empty return and commented code below is temporary state for targeted testing of discovery request construction.
+        // Once testing confirms valid contstruction, return will be removed, and commented code will be restored and worked on
+        return Span<byte>.Empty;
+        //if ((Flags & MsgFlags.Priv) == MsgFlags.Priv && _didDiscovery) {
+        //    pduBytes = SomeCryptoCall(pduBytes, otherThings, out byte[] msgPrivacyParameters);
+        //    _msgPrivacyParameters = new OctetStringRaw(msgPrivacyParameters);
+        //    OctetStringRaw cypherPdu = new(pduBytes);
+        //    pduBytes = [.. cypherPdu.Construct()];
+        //}
+        
+        //payload = [
+        //    ..Version.Construct(),
+        //    ..msgGlobalData.Construct(),
+        //    ..msgSecurityParameters.Construct(),
+        //    ..pduBytes
+        //];
+        //request = [
+        //    0x30,
+        //    ..IDataType.EncodeLength(payload.Length),
+        //    ..payload
+        //];
+        //// CHECK FLAGS - HASH HERE 
+        //if ((Flags & MsgFlags.Auth) == MsgFlags.Auth && _didDiscovery) {
+        //    _msgAuthenticationParameters = new(SomeHashCall(request));
+        //    msgSecurityParameters = new(usmSecurityParameters.Construct());
+        //    payload = [
+        //        ..Version.Construct(),
+        //        ..msgGlobalData.Construct(),
+        //        ..msgSecurityParameters.Construct(),
+        //        ..pduBytes
+        //    ];
+        //    return (byte[])[
+        //        0x30,
+        //        ..IDataType.EncodeLength(payload.Length),
+        //        ..payload
+        //    ];
+        //} else {
+        //    return request;
+        //}
     }
     private Sequence BuildMsgGlobalData() {
         _messageId = Random.Shared.Next();
         Integer messageId = new(_messageId);
         Integer maxMsgSize = new(_maxSize);
-        OctetStringRaw flags = new([(byte)Flags]);
+        OctetStringRaw flags = new(_didDiscovery ? [(byte)Flags] : [0x4]);
         Integer secModel = new(3);
         Sequence msgGlobalData = new([]);
         msgGlobalData.AddChild(messageId);
@@ -85,15 +126,24 @@ public class SnmpV3Request : Request {
     }
     private Sequence BuildUsmSecurityParameters() {
         Sequence usmSecurityParameters = new([]);
-        usmSecurityParameters.AddChild(_msgAuthoritativeEngineID);
-        usmSecurityParameters.AddChild(_msgAuthoritativeEngineTime);
-        usmSecurityParameters.AddChild(_msgUserName);
-        usmSecurityParameters.AddChild(_msgAuthenticationParameters);
-        usmSecurityParameters.AddChild(_msgPrivacyParameters);
+        if (_didDiscovery) {
+            usmSecurityParameters.AddChild(_msgAuthoritativeEngineID);
+            usmSecurityParameters.AddChild(_msgAuthoritativeEngineTime);
+            usmSecurityParameters.AddChild(_msgUserName);
+            usmSecurityParameters.AddChild(_msgAuthenticationParameters);
+            usmSecurityParameters.AddChild(_msgPrivacyParameters);
+        } else {
+            usmSecurityParameters.AddChild(OctetStringRaw.Empty);
+            usmSecurityParameters.AddChild(new Integer(0));
+            usmSecurityParameters.AddChild(OctetStringRaw.Empty);
+            usmSecurityParameters.AddChild(OctetStringRaw.Empty);
+            usmSecurityParameters.AddChild(OctetStringRaw.Empty);
+        }
         return usmSecurityParameters;
     }
 }
-/*
+/* SNMP REQUEST AND RESPONSE STRUCTURE - TEMPORARY REFERENCE, DO NOT INCLUDE IN COMMIT COMMENTS 
+ *  
  * DISCOVERY
  * - SEQUENCE snmpv3Message
  *  - LENGTH
