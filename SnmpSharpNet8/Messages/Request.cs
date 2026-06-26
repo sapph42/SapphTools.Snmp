@@ -130,11 +130,11 @@ public abstract class Request : ISnmpRequest {
             vbs.Add(vb);
         }
         SnmpPdu pdu = new([], requestTag, requestId, 0, 0, vbs);
-        ScopedPdu sPdu = new() {
-            ContextEngineId = new(contextEngineId),
-            ContextName = new(string.Empty),
-            RequestPdu = pdu
-        };
+        ScopedPdu sPdu = new(
+            new(contextEngineId),
+            new(string.Empty),
+            pdu
+        );
         return new(ipAddress, port, timeout, retries, flags) {
             ScopedPdu = sPdu,
             AuthCred = authCred,
