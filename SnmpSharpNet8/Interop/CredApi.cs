@@ -15,7 +15,7 @@ internal static partial class CredApi {
         CREDUIWIN_SECURE_PROMPT             = 0x00001000,
         CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY = 0x00040000,
         CREDUIWIN_PACK_32_WOW               = 0x10000000,
-        BASIC                               = CREDUIWIN_GENERIC | CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY;
+        BASIC                               = CREDUIWIN_GENERIC | CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY
     }
     public struct CredentialPack {
         public StringBuilder UserName;

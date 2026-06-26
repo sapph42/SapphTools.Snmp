@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SnmpSharpNet8.Security; 
 public class Privacy {
@@ -12,6 +13,7 @@ public class Privacy {
         }
         Algorithm = algo;
     }
+    [SetsRequiredMembers]
     public Privacy(PrivacyProtocol algo, Authentication auth) {
         if (algo == PrivacyProtocol.None) {
             throw new ArgumentException("PrivacyProtocol.None is not valid for object construction.", nameof(algo));

@@ -26,7 +26,7 @@ public class PrivacyDES : IPrivacyProtocol {
 			byte[] key, 
 			int __, 
 			int ___,
-            ReadOnlySpan<byte> privacyParameters
+            Span<byte> privacyParameters
 		) {
         if ((encryptedData.Length % 8) != 0)
             throw new ArgumentOutOfRangeException(nameof(encryptedData), "Encrypted data buffer has to be divisible by 8.");
@@ -63,7 +63,7 @@ public class PrivacyDES : IPrivacyProtocol {
 			byte[] key, 
 			int engineBoots, 
 			int _, 
-			out ReadOnlySpan<byte> privacyParameters
+			out Span<byte> privacyParameters
 		) {
         ArgumentNullException.ThrowIfNull(key);
 		if (key.Length < MinimumKeyLength) {

@@ -15,7 +15,7 @@ public class ScopedPdu {
             ..ContextName.Construct(),
             ..RequestPdu.ConstructRequest()
         ];
-        Span<byte> tagValue = [];
+        Span<byte> tagValue = stackalloc byte[1];
         _ = new Asn1Tag(TagClass.ContextSpecific, 0, true).Encode(tagValue);
         return (byte[])[
             ..tagValue,

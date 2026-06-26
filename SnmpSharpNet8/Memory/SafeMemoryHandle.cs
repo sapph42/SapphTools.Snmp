@@ -1,4 +1,4 @@
-﻿using SnmpSharpNet8.Unsafe;
+﻿using SnmpSharpNet8.Interop;
 using System.Runtime.InteropServices;
 
 namespace SnmpSharpNet8.Memory;
