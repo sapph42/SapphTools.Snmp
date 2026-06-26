@@ -54,18 +54,17 @@ public class SnmpV3Request : Request {
         ReadOnlySpan<byte> pduBytes = ScopedPdu.ConstructRequest();
         int reqId;
         byte[] payload;
+        ReadOnlySpan<byte> ver = Version.Construct();
+        ReadOnlySpan<byte> mgd = msgGlobalData.Construct();
+        ReadOnlySpan<byte> msp = msgSecurityParameters.Construct();
+        ScopedPdu pdu = ScopedPdu.DiscoveryScopedPdu(out reqId);
+        ReadOnlySpan<byte> spdu = pdu.Construct();
         if (!_didDiscovery) {
-            ScopedPdu pdu = ScopedPdu.DiscoveryScopedPdu(out reqId);
-            Sequence message = new([]);
-            message.AddChild(Version);
-            message.AddChild(msgGlobalData);
-            message.AddChild(msgSecurityParameters);
-            message.AddChild(pdu);
             payload = [
-                ..Version.Construct(),
-                ..msgGlobalData.Construct(),
-                ..msgSecurityParameters.Construct(),
-                   ..pduBytes
+                ..ver,
+                ..mgd,
+                ..msp,
+                ..spdu
             ];
             return (byte[])[
                 0x30,
@@ -133,12 +132,14 @@ public class SnmpV3Request : Request {
         Sequence usmSecurityParameters = new([]);
         if (_didDiscovery) {
             usmSecurityParameters.AddChild(_msgAuthoritativeEngineID);
+            usmSecurityParameters.AddChild(_msgAuthoritativeEngineBoots);
             usmSecurityParameters.AddChild(_msgAuthoritativeEngineTime);
             usmSecurityParameters.AddChild(_msgUserName);
             usmSecurityParameters.AddChild(_msgAuthenticationParameters);
             usmSecurityParameters.AddChild(_msgPrivacyParameters);
         } else {
             usmSecurityParameters.AddChild(OctetStringRaw.Empty);
+            usmSecurityParameters.AddChild(new Integer(0));
             usmSecurityParameters.AddChild(new Integer(0));
             usmSecurityParameters.AddChild(OctetStringRaw.Empty);
             usmSecurityParameters.AddChild(OctetStringRaw.Empty);
