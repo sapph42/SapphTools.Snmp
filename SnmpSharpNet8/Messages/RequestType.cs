@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace SnmpSharpNet8.Messages; 
+﻿namespace SnmpSharpNet8.Messages; 
 
 public enum V1RequestType {
     GetRequest     = 0,
