@@ -54,9 +54,13 @@ public class SnmpV3Request : Request {
         ReadOnlySpan<byte> pduBytes = ScopedPdu.ConstructRequest();
         int reqId;
         byte[] payload;
-        byte[] request;
         if (!_didDiscovery) {
-            pduBytes = ScopedPdu.DiscoveryScopedPdu(out reqId).ConstructRequest();
+            ScopedPdu pdu = ScopedPdu.DiscoveryScopedPdu(out reqId);
+            Sequence message = new([]);
+            message.AddChild(Version);
+            message.AddChild(msgGlobalData);
+            message.AddChild(msgSecurityParameters);
+            message.AddChild(pdu);
             payload = [
                 ..Version.Construct(),
                 ..msgGlobalData.Construct(),
@@ -74,13 +78,14 @@ public class SnmpV3Request : Request {
         // Empty return and commented code below is temporary state for targeted testing of discovery request construction.
         // Once testing confirms valid contstruction, return will be removed, and commented code will be restored and worked on
         return Span<byte>.Empty;
+        //byte[] request;
         //if ((Flags & MsgFlags.Priv) == MsgFlags.Priv && _didDiscovery) {
         //    pduBytes = SomeCryptoCall(pduBytes, otherThings, out byte[] msgPrivacyParameters);
         //    _msgPrivacyParameters = new OctetStringRaw(msgPrivacyParameters);
         //    OctetStringRaw cypherPdu = new(pduBytes);
         //    pduBytes = [.. cypherPdu.Construct()];
         //}
-        
+
         //payload = [
         //    ..Version.Construct(),
         //    ..msgGlobalData.Construct(),
