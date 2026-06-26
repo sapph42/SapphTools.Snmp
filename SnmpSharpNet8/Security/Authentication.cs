@@ -3,10 +3,9 @@
 namespace SnmpSharpNet8.Security;
 
 public class Authentication {
-    private readonly int authenticationLength;
     private readonly HashAlgorithmName _hashName;
 
-    public int AuthHeaderLength { get; }
+    public int AuthHeaderLength { get; private set; }
     public string Name { get; }
 
     public Authentication(AuthenticationDigest algo) {
