@@ -15,6 +15,9 @@ public abstract class Request : ISnmpRequest {
     protected IPEndPoint _peerEndPoint;
     protected int _requestId = 0;
     protected int _retries = 1;
+    private Authentication? AuthProvider;
+    private Privacy? PrivacyProvider;
+
     public abstract Integer Version { get; }
     public abstract IRequestPdu Pdu { get; init; }
     public IPAddress Target { get; init; }
@@ -23,8 +26,8 @@ public abstract class Request : ISnmpRequest {
         Target = target;
         _peerEndPoint = new(target, port);
         _socket = new(target.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
-        IPEndPoint ipEndPoint = new(target, 0);
-        _socket.Bind(ipEndPoint);
+        IPEndPoint localEndPoint = new(IPAddress.Any, 0);
+        _socket.Bind(localEndPoint);
         _socket.ReceiveTimeout = timeout;
         _retries = retries;
     }
@@ -92,15 +95,22 @@ public abstract class Request : ISnmpRequest {
         int retries = 0
     ) {
         MsgFlags flags;
+        Authentication? authProvider = null;
+        Privacy? privacyProvider = null;
         if (digest is null && privacy is null) {
             flags = MsgFlags.NoAuthNoPrivRep;
         } else if (digest is null) {
             throw new UnreachableException();
         } else if (privacy is null) {
             flags = MsgFlags.AuthNoPrivRep;
+            authProvider = new(digest.Value);
         } else {
             flags = MsgFlags.AuthPrivRep;
+            authProvider = new(digest.Value);
+            privacyProvider = new(privacy.Value, authProvider);
         }
+        digest ??= AuthenticationDigest.None;
+        privacy ??= PrivacyProtocol.None;
         IPAddress ipAddress = IPAddress.Parse(ip);
         Credential? authCred = null;
         Credential? privCred = null;
@@ -129,7 +139,9 @@ public abstract class Request : ISnmpRequest {
             ScopedPdu = sPdu,
             AuthCred = authCred,
             PrivCred = privCred,
-            _msgUserName = new(userName)
+            _msgUserName = new(userName),
+            AuthProvider = authProvider,
+            PrivacyProvider = privacyProvider
         };
     }
     public abstract ReadOnlySpan<byte> Construct();
