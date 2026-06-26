@@ -21,6 +21,7 @@ public sealed class BulkRequestPdu : Asn1Node, IRequestPdu {
         MaxRepititions = maxRepetitions;
         VarBindings = varBindings;
     }
+    public override ReadOnlySpan<byte> Construct() => ConstructRequest();
     public ReadOnlySpan<byte> ConstructRequest() {
         int tagValue = PduType.TagValue;
         int reqId = (int)Math.Clamp(RequestId, 0, int.MaxValue);
