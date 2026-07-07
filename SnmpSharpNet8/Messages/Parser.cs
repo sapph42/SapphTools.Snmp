@@ -1,0 +1,158 @@
+﻿using SapphTools.Asn1;
+using SapphTools.Asn1.DataTypes;
+using static SapphTools.Asn1.Parser;
+using System.Formats.Asn1;
+using SnmpSharpNet8.Pdu;
+using SnmpSharpNet8.Security;
+
+namespace SnmpSharpNet8.Messages;
+
+public static class Parser {
+    public static IAsn1Structure ParseSnmp(Span<byte> rawSpan, Authentication? auth = null, Privacy? priv = null) => ParseSnmp(raw: [.. rawSpan], auth, priv);
+    public static IAsn1Structure ParseSnmp(byte[] raw, Authentication? auth = null, Privacy? priv = null) {
+        ReadOnlySpan<byte> span = raw;
+
+        Asn1Tag msgTag = Asn1.ReadTag(span);
+        Expect(msgTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "SNMP message");
+        IDataType.GetLength(span, out int msgLen, out int msgStart);
+        ReadOnlySpan<byte> body = span.Slice(msgStart, msgLen);
+        ReadOnlySpan<byte> msgTlv = span[..(msgStart + msgLen)];
+
+        int pos = msgStart;
+        long version = ReadInteger(span, ref pos, "version");
+
+        if (version == 2) {
+            SnmpPdu pdu = ParseSnmpv2(body, pos, out string community);
+            return new SnmpV2Asn1Structure {
+                Raw = msgTlv,
+                Version = version,
+                Community = community,
+                Pdu = pdu
+            };
+        } else if (version == 3) {
+            return ParseSnmpv3(span, pos, auth, priv);
+        } else {
+            throw new NotSupportedException($"Only versions 2 and 3 are supported. Actual version parsed: {version}");
+        }
+
+
+    }
+    private static SnmpPdu ParseSnmpv2(ReadOnlySpan<byte> body, int pos, out string community) {
+        community = ReadOctetString(body, ref pos, "community");
+
+        ReadOnlySpan<byte> pduRest = body[pos..];
+        Asn1Tag pduTag = Asn1.ReadTag(pduRest);
+        if (pduTag.TagClass != TagClass.ContextSpecific || !pduTag.IsConstructed)
+            throw new FormatException(
+                $"Expected context-constructed PDU tag, got {Describe(pduTag)} " +
+                $"({GetBlock(pduRest)})");
+        IDataType.GetLength(pduRest, out int pduLen, out int pduStart);
+        ReadOnlySpan<byte> pduBody = pduRest.Slice(pduStart, pduLen);
+        ReadOnlySpan<byte> pduTlv = pduRest[..(pduStart + pduLen)];
+
+        return ParsePdu(pduTlv, pduTag, pduBody);
+    }
+    private static SnmpV3Asn1Structure ParseSnmpv3(ReadOnlySpan<byte> body, int pos, Authentication? auth = null, Privacy? priv = null) {
+        Asn1Tag headerDataTag = Asn1.ReadTag(body[pos..]);
+        Expect(headerDataTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "msgGlobalData");
+        IDataType.GetLength(body[pos..], out int headerDataLength, out int headerDataBodyIndex);
+        pos += headerDataBodyIndex;
+        MsgGlobalData msgGlobalData = new(body.Slice(pos, headerDataLength));
+        pos += headerDataLength;
+
+        Asn1Tag paramEnvTag = Asn1.ReadTag(body[pos..]);
+        Expect(paramEnvTag, TagClass.Universal, (int)UniversalTagNumber.OctetString, "msgSecurityParameters");
+        IDataType.GetLength(body[pos..], out int paramEnvLength, out int paramEnvIndex);
+        pos += paramEnvIndex;
+        OctetStringRaw paramEnv = new(body.Slice(pos, paramEnvLength));
+        pos += paramEnvLength;
+
+        Asn1Tag secParamTag = Asn1.ReadTag(paramEnv.Raw);
+        Expect(secParamTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "UsmSecurityParameters");
+        IDataType.GetLength(paramEnv.Raw, out int secParamLength, out int secParamIndex);
+        UsmSecurityParameters secParams = new(paramEnv.Raw[secParamIndex..]);
+
+        ScopedPdu? scopedPdu = null;
+        OctetStringRaw? cryptEnv = null;
+        if (priv is not null) {
+            Asn1Tag cryptEnvTag = Asn1.ReadTag(body[pos..]);
+            Expect(cryptEnvTag, TagClass.Universal, (int)UniversalTagNumber.OctetString, "Encrypted ScopedPDU Envelope");
+            IDataType.GetLength(body[pos..], out int cryptEnvLength, out int cryptEnvIndex);
+            pos += cryptEnvIndex;
+            cryptEnv = new(body.Slice(pos, cryptEnvLength));
+            pos += cryptEnvLength;
+
+            ReadOnlySpan<byte> encryptedBytes = cryptEnv.Raw;
+            //DECRYPT
+        } else {
+            Asn1Tag scopedPduTag = Asn1.ReadTag(body[pos..]);
+            Expect(scopedPduTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "scopedPdu");
+            IDataType.GetLength(body[pos..], out int scopedPduLength, out int scopedPduIndex);
+            pos += scopedPduIndex;
+            Sequence scopedPduSeq = new(body.Slice(pos, scopedPduLength));
+            pos += scopedPduLength;
+            if (scopedPduSeq.Items![0] is OctetStringRaw contextEngineId && scopedPduSeq.Items[1] is OctetStringRaw contextName && scopedPduSeq.Items[2] is SnmpPdu pdu) {
+                scopedPdu = new(contextEngineId, contextName, pdu);
+            }
+        }
+        return new() {
+            MsgGlobalData = msgGlobalData,
+            MsgSecurityParametersEnvelope = paramEnv,
+            UsmSecurityParameters = secParams,
+            ScopedPduEnvelope = cryptEnv,
+            ScopedPdu = scopedPdu!
+        };
+    }
+
+    private static SnmpPdu ParsePdu(ReadOnlySpan<byte> pduTlv, Asn1Tag pduTag,
+                                    ReadOnlySpan<byte> pduBody) {
+        int pos = 0;
+        long requestId = ReadInteger(pduBody, ref pos, "request-id");
+        long errorStat = ReadInteger(pduBody, ref pos, "error-status");
+        long errorIndex = ReadInteger(pduBody, ref pos, "error-index");
+
+        ReadOnlySpan<byte> vbListRest = pduBody[pos..];
+        Asn1Tag vbListTag = Asn1.ReadTag(vbListRest);
+        Expect(vbListTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "VarBindList");
+        IDataType.GetLength(vbListRest, out int vbListLen, out int vbListStart);
+        ReadOnlySpan<byte> vbList = vbListRest.Slice(vbListStart, vbListLen);
+
+        var bindings = new List<VarBinding>();
+        int vbPos = 0;
+        while (vbPos < vbList.Length) {
+            ReadOnlySpan<byte> vbRest = vbList[vbPos..];
+            IDataType.GetLength(vbRest, out int vbLen, out int vbIdx);
+            int vbConsumed = vbIdx + vbLen;
+            bindings.Add(ParseVarBind(vbRest[..vbConsumed]));
+            vbPos += vbConsumed;
+        }
+        return new SnmpPdu(pduTlv, pduTag, requestId, errorStat, errorIndex, bindings);
+    }
+    private static VarBinding ParseVarBind(ReadOnlySpan<byte> vbTlv) {
+        Asn1Tag seqTag = Asn1.ReadTag(vbTlv);
+        Expect(seqTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "VarBind");
+        IDataType.GetLength(vbTlv, out int len, out int start);
+        ReadOnlySpan<byte> content = vbTlv.Slice(start, len);
+
+        int pos = 0;
+
+        ReadOnlySpan<byte> oidRest = content[pos..];
+        Asn1Tag oidTag = Asn1.ReadTag(oidRest);
+        Expect(oidTag, TagClass.Universal, (int)UniversalTagNumber.ObjectIdentifier, "VarBind name");
+        IDataType.GetLength(oidRest, out int oidLen, out int oidStart);
+        ObjectIdentifier name = new(oidRest.Slice(oidStart, oidLen));   // content-only ctor
+        pos += oidStart + oidLen;
+
+        ReadOnlySpan<byte> valRest = content[pos..];
+        Asn1Tag valTag = Asn1.ReadTag(valRest);
+        IDataType.GetLength(valRest, out int valLen, out int valStart);
+        byte[] valPayload = [.. valRest.Slice(valStart, valLen)];
+        Asn1Tag key = new(valTag.TagClass, valTag.TagValue, isConstructed: false);
+        IDataType bound = DataTypeRegistry.Factories.TryGetValue(key, out var factory)
+            ? factory(valPayload)
+            : new Unknown(valRest.Slice(valStart, valLen));
+
+        return new VarBinding(vbTlv, name, bound);
+    }
+
+}
