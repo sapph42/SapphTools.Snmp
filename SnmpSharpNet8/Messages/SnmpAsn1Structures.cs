@@ -28,17 +28,34 @@ public class SnmpV3Asn1Structure : IAsn1Structure {
     IReadOnlyList<IAsn1Node>? IAsn1Node.Children => [ScopedPdu.InnerPdu];
     public int Length => bytes.Length;
     public required MsgGlobalData MsgGlobalData { get; init; }
-    public required OctetStringRaw MsgSecurityParametersEnvelope { get; init; }
+    public required OctetStringRaw MsgSecurityParametersEnvelope { get; set; }
     public required UsmSecurityParameters UsmSecurityParameters { get; init; }
-    public required OctetStringRaw? ScopedPduEnvelope { get; init; }
+    public required OctetStringRaw? ScopedPduEnvelope { get; set; }
     public required ScopedPdu ScopedPdu { get; init; }
     public Asn1Tag Tag => default;
     public string? Value => string.Join(", ", ScopedPdu.InnerPdu.VarBindings.Select(vb => vb.Value));
-    public long Version { get; init; }
+    public long Version { get; init; } = 3;
 
     public ReadOnlySpan<byte> Raw {
         get => bytes.AsSpan();
         set => bytes = [.. value];
     }
-    ReadOnlySpan<byte> IConstructable.Construct() => [];
+    public ReadOnlySpan<byte> Construct() {
+        if (ScopedPduEnvelope is null) {
+            ScopedPduEnvelope = new(ScopedPdu.Construct());
+        } else if (ScopedPduEnvelope.Raw.Length == 0) {
+            ScopedPduEnvelope = new(ScopedPdu.Construct());
+        }
+        if (MsgSecurityParametersEnvelope is null) {
+            MsgSecurityParametersEnvelope = new(UsmSecurityParameters.Construct());
+        } else if (MsgSecurityParametersEnvelope.Raw.Length == 0) {
+            MsgSecurityParametersEnvelope = new(UsmSecurityParameters.Construct());
+        }
+        return (byte[])[
+            ..new Integer(Version).Construct(),
+            ..MsgGlobalData.Construct(),
+            ..MsgSecurityParametersEnvelope.Construct(),
+            ..ScopedPduEnvelope.Construct()
+        ];
+    }
 }
