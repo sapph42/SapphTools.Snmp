@@ -19,7 +19,7 @@ public class Authentication {
         };
         Name = $"HMAC-{_hashName.Name}";
     }
-    public ReadOnlySpan<byte> Authenticate(byte[] key, ReadOnlySpan<byte> wholeMessage) {
+    public ReadOnlySpan<byte> Authenticate(Span<byte> key, ReadOnlySpan<byte> wholeMessage) {
         using IncrementalHash hmac = IncrementalHash.CreateHMAC(_hashName, key);
         hmac.AppendData(wholeMessage);
         ReadOnlySpan<byte> full = hmac.GetHashAndReset();
@@ -27,7 +27,7 @@ public class Authentication {
     }
 
     public bool AuthenticateIncomingMsg(
-            byte[] key,
+            Span<byte> key,
             ReadOnlySpan<byte> authenticationParameters,   // the digest extracted from the received message
             ReadOnlySpan<byte> wholeMessage) {              // MUST already have the auth field zeroed
         using var hmac = IncrementalHash.CreateHMAC(_hashName, key);
@@ -39,9 +39,9 @@ public class Authentication {
             authenticationParameters[..AuthHeaderLength]);
     }
 
-    public byte[] PasswordToKey(byte[] password, ReadOnlySpan<byte> engineId) {
+    public Span<byte> PasswordToKey(Span<byte> password, ReadOnlySpan<byte> engineId) {
         using var inc = IncrementalHash.CreateHash(_hashName);
-        byte[] buf = new byte[64];
+        Span<byte> buf = stackalloc byte[64];
         int produced = 0;
         while (produced < 1048576) {
             for (int i = 0; i < 64; i++)
