@@ -24,8 +24,8 @@ public class PrivacyAES : IPrivacyProtocol {
 	}
 
     public ReadOnlySpan<byte> Decrypt(
-            byte[] encryptedData,
-            byte[] key,
+            ReadOnlySpan<byte> encryptedData,
+            Span<byte> key,
             int engineBoots,
             int engineTime,
             Span<byte> privacyParameters
@@ -33,33 +33,24 @@ public class PrivacyAES : IPrivacyProtocol {
         if (key == null || key.Length < MinimumKeyLength)
             throw new ArgumentOutOfRangeException(nameof(key), "Invalid key length");
 
-        byte[] iv = new byte[16];
-        int len = Math.Min(key.Length, MaximumKeyLength);
+        Span<byte> iv = stackalloc byte[16];
+        byte[] pkey = [.. key];
+        long salt = NextSalt();
+        privacyParameters = new byte[8];
+        BinaryPrimitives.WriteInt32BigEndian(iv[..4], engineBoots);
+        BinaryPrimitives.WriteInt32BigEndian(iv[4..8], engineTime);
+        privacyParameters[..8].CopyTo(iv[8..16]);
+        Span<byte> unencryptedData = new byte[encryptedData.Length];
         try {
-            BinaryPrimitives.WriteInt32BigEndian(iv.AsSpan(0, 4), engineBoots);
-            BinaryPrimitives.WriteInt32BigEndian(iv.AsSpan(4, 4), engineTime);
-
-            privacyParameters.CopyTo(iv.AsSpan(8));
-
-            using Aes rm = Aes.Create();
-            rm.KeySize = _keyBytes * 8;
-            rm.FeedbackSize = 128;
-            rm.BlockSize = 128;
-            rm.Padding = PaddingMode.Zeros;
-            rm.Mode = CipherMode.CFB;
-            rm.Key = key[..len];
-            rm.IV = iv;
-            using ICryptoTransform cryptor = rm.CreateDecryptor();
-
-            if ((encryptedData.Length % _keyBytes) != 0) {
-                int paddedLength = (encryptedData.Length + 15) / 16 * 16;
-                byte[] decryptBuffer = new byte[paddedLength];
-                encryptedData.AsSpan(0, encryptedData.Length).CopyTo(decryptBuffer);
-                return cryptor
-                    .TransformFinalBlock(decryptBuffer, 0, paddedLength)
-                    .AsSpan(0, encryptedData.Length);
-            }
-            return cryptor.TransformFinalBlock(encryptedData, 0, encryptedData.Length);
+            using Aes aes = Aes.Create();
+            aes.Key = pkey;
+            _ = aes.DecryptCfb(
+                encryptedData,
+                iv,
+                unencryptedData,
+                PaddingMode.None,
+                feedbackSizeInBits: 128);
+            return unencryptedData;
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was decrypting data.", ex);
         } finally {
@@ -67,37 +58,34 @@ public class PrivacyAES : IPrivacyProtocol {
         }
     }
     public ReadOnlySpan<byte> Encrypt(
-            byte[] unencryptedData,
-            byte[] key,
+            ReadOnlySpan<byte> unencryptedData,
+            Span<byte> key,
             int engineBoots,
             int engineTime,
-            out Span<byte> privacyParameters
+            out byte[] privacyParameters
         ) {
         if (key == null || key.Length < _keyBytes)
             throw new ArgumentOutOfRangeException(nameof(key), "Invalid key length");
 
-        byte[] iv = new byte[16];
-        byte[] pkey = new byte[MinimumKeyLength];
+        Span<byte> iv = stackalloc byte[16];
+        byte[] pkey = [.. key];
         long salt = NextSalt();
-        BinaryPrimitives.WriteInt32BigEndian(iv.AsSpan(0, 4), engineBoots);
-        BinaryPrimitives.WriteInt32BigEndian(iv.AsSpan(4, 4), engineTime);
-        privacyParameters = BitConverter.GetBytes(salt);
-        privacyParameters.Reverse();
-        privacyParameters.CopyTo(iv.AsSpan(8));
+        privacyParameters = new byte[8];
+        BinaryPrimitives.WriteInt32BigEndian(iv[..4], engineBoots);
+        BinaryPrimitives.WriteInt32BigEndian(iv[4..8], engineTime);
+        BinaryPrimitives.WriteInt64BigEndian(privacyParameters[..8], salt);
+        privacyParameters[..8].CopyTo(iv[8..16]);
+        Span<byte> encryptedData = new byte[unencryptedData.Length];
         try {
-            using Aes rm = Aes.Create();
-            rm.KeySize = _keyBytes * 8;
-            rm.FeedbackSize = 128;
-            rm.BlockSize = 128;
-            rm.Padding = PaddingMode.Zeros;
-            rm.Mode = CipherMode.CFB;
-            key.CopyTo(pkey, 0);
-            rm.Key = pkey;
-            rm.IV = iv;
-            return rm
-                .CreateEncryptor()
-                .TransformFinalBlock(unencryptedData, 0, unencryptedData.Length)
-                .AsSpan(0, unencryptedData.Length);
+            using Aes aes = Aes.Create();
+            aes.Key = pkey;
+            _ = aes.EncryptCfb(
+                unencryptedData,
+                iv,
+                encryptedData,
+                PaddingMode.None,
+                feedbackSizeInBits: 128);
+            return encryptedData;
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was encrypting data.", ex);
         } finally {
@@ -105,24 +93,25 @@ public class PrivacyAES : IPrivacyProtocol {
             CryptographicOperations.ZeroMemory(pkey);
         }
     }
-    public byte[] ExtendShortKey(byte[] shortKey, ReadOnlySpan<byte> engineID) {
-        byte[] extKey = new byte[MinimumKeyLength];
-        byte[] lastKeyBuf = new byte[shortKey.Length];
-        Array.Copy(shortKey, lastKeyBuf, shortKey.Length);
+    public Span<byte> ExtendShortKey(Span<byte> shortKey, ReadOnlySpan<byte> engineID) {
+        Span<byte> extKey = new byte[MinimumKeyLength];
+        Span<byte> lastKeyBuf = stackalloc byte[shortKey.Length];
+        shortKey.CopyTo(lastKeyBuf);
         int keyLen = shortKey.Length > MinimumKeyLength ? MinimumKeyLength : shortKey.Length;
-        Array.Copy(shortKey, extKey, keyLen);
+        shortKey.CopyTo(extKey);
         while (keyLen < MinimumKeyLength) {
-            byte[] tmpBuf = Auth.PasswordToKey(lastKeyBuf, engineID);
+            Span<byte> tmpBuf = Auth.PasswordToKey(lastKeyBuf, engineID);
             if (tmpBuf.Length <= (MinimumKeyLength - keyLen)) {
-                Array.Copy(tmpBuf, 0, extKey, keyLen, tmpBuf.Length);
+                tmpBuf.CopyTo(extKey[keyLen..]);
                 keyLen += tmpBuf.Length;
             } else {
-                Array.Copy(tmpBuf, 0, extKey, keyLen, MinimumKeyLength - keyLen);
+                tmpBuf[..(MinimumKeyLength - keyLen)].CopyTo(extKey[keyLen..]);
                 keyLen += (MinimumKeyLength - keyLen);
             }
             lastKeyBuf = new byte[tmpBuf.Length];
-            Array.Copy(tmpBuf, lastKeyBuf, tmpBuf.Length);
+            tmpBuf.CopyTo(lastKeyBuf);
         }
+        CryptographicOperations.ZeroMemory(lastKeyBuf);
         return extKey;
     }
     public int GetEncryptedLength(int scopedPduLength) => scopedPduLength;
@@ -130,10 +119,10 @@ public class PrivacyAES : IPrivacyProtocol {
         long next = Interlocked.Increment(ref _salt);
         return next;
     }
-	public byte[] PasswordToKey(byte[] secret, ReadOnlySpan<byte> engineId) {
+	public Span<byte> PasswordToKey(Span<byte> secret, ReadOnlySpan<byte> engineId) {
 		if (secret == null || secret.Length < 8)
 			throw new SnmpPrivacyException("Invalid privacy secret length.");
-		byte[] key = Auth.PasswordToKey(secret, engineId);
+		Span<byte> key = Auth.PasswordToKey(secret, engineId);
         return key.Length < MinimumKeyLength ?
 			ExtendShortKey(key, engineId) :
 		    key;
