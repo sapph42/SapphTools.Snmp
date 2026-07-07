@@ -130,7 +130,7 @@ public sealed class Credential : IDisposable {
             _gate.Release();
         }
     }
-    public ReadOnlySpan<byte> Decrypt(byte[] encryptedBytes, int engineBoots, int engineTime, IPrivacyProtocol algo, Span<byte> privParams) {
+    public ReadOnlySpan<byte> Decrypt(byte[] encryptedBytes, int engineBoots, int engineTime, Privacy algo, Span<byte> privParams) {
         if (_keyHandle.IsInvalid) {
             return [];
         }
@@ -159,7 +159,14 @@ public sealed class Credential : IDisposable {
             _gate.Release();
         }
     }
-    public ReadOnlySpan<byte> Encrypt(byte[] clearBytes, byte[] engineId, int engineBoots, int engineTime, IPrivacyProtocol algo, out Span<byte> privParams) {
+    public ReadOnlySpan<byte> Encrypt(
+            ReadOnlySpan<byte> clearBytes,
+            ReadOnlySpan<byte> engineId, 
+            long engineBoots, 
+            long engineTime, 
+            Privacy privAlgo, 
+            Authentication authAlgo, 
+            out byte[] privParams) {
         if (_credHandle.IsInvalid) {
             privParams = [];
             return [];
@@ -168,21 +175,23 @@ public sealed class Credential : IDisposable {
         try {
             if (_isEncrypted) {
                 if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
-                    StoreKey(algo, engineId);
+                    StoreKey(authAlgo, engineId);
                 }
                 DecryptKey();
                 _isEncrypted = false;
             }
-            byte[] key = new byte[_keyHandle.Length];
+            Span<byte> key = new byte[_keyHandle.Length];
             try {
-                Marshal.Copy(_keyHandle.DangerousGetHandle(), key, 0, key.Length);
-                return algo.Encrypt(
-                    clearBytes,
+                _keyHandle.Read(key);
+                Span<byte> cryptBytes = new byte[clearBytes.Length];
+                privAlgo.Encrypt(
+                    [..clearBytes],
                     key,
-                    engineBoots,
-                    engineTime,
+                    (int)engineBoots,
+                    (int)engineTime,
                     out privParams
-                );
+                ).CopyTo(cryptBytes);
+                return cryptBytes;
             } finally {
                 CryptographicOperations.ZeroMemory(key);
             }
@@ -205,9 +214,9 @@ public sealed class Credential : IDisposable {
                 DecryptKey();
                 _isEncrypted = false;
             }
-            byte[] key = new byte[_keyHandle.Length];
+            Span<byte> key = new byte[_keyHandle.Length];
             try {
-                Marshal.Copy(_keyHandle.DangerousGetHandle(), key, 0, key.Length);
+                _keyHandle.Read(key);
                 return algo.Authenticate(key, wholeMessage);
             } finally {
                 CryptographicOperations.ZeroMemory(key);
@@ -232,7 +241,7 @@ public sealed class Credential : IDisposable {
             int secretLen = CredApi.GetPassLength(_credHandle);
             char[] chars = new char[secretLen];
             byte[] secret = [];
-            byte[] key = new byte[algo.AuthHeaderLength];
+            Span<byte> key = new byte[algo.AuthHeaderLength];
             try {
                 using SafeMemoryHandle pass = proxy.GetPassword();
                 Marshal.Copy(pass.DangerousGetHandle(), chars, 0, secretLen);
@@ -241,7 +250,7 @@ public sealed class Credential : IDisposable {
                 Encoding.ASCII.GetBytes(chars, secret);
                 key = algo.PasswordToKey(secret, engineId);
                 _keyHandle = SafeMemoryHandle.CreateCoTaskMem((uint)(key.Length + 1));
-                Marshal.Copy(key, 0, _keyHandle.DangerousGetHandle(), key.Length + 1);
+                _keyHandle.Write(key);
             } finally {
                 CryptographicOperations.ZeroMemory(secret);
                 CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes<char>(chars));
@@ -268,7 +277,7 @@ public sealed class Credential : IDisposable {
             int secretLen = CredApi.GetPassLength(_credHandle);
             char[] chars = new char[secretLen];
             byte[] secret = [];
-            byte[] key = new byte[algo.MinimumKeyLength];
+            Span<byte> key = new byte[algo.MinimumKeyLength];
             try {
                 using SafeMemoryHandle pass = proxy.GetPassword();
                 Marshal.Copy(pass.DangerousGetHandle(), chars, 0, secretLen);
@@ -277,7 +286,7 @@ public sealed class Credential : IDisposable {
                 Encoding.ASCII.GetBytes(chars, secret);
                 key = algo.PasswordToKey(secret, engineId);
                 _keyHandle = SafeMemoryHandle.CreateCoTaskMem((uint)(key.Length + 1));
-                Marshal.Copy(key, 0, _keyHandle.DangerousGetHandle(), key.Length + 1);
+                _keyHandle.Write(key);
             } finally {
                 CryptographicOperations.ZeroMemory(secret);
                 CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes<char>(chars));
