@@ -1,6 +1,5 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
-using SnmpSharpNet8.Exceptions;
 using SnmpSharpNet8.Pdu;
 using SnmpSharpNet8.Security;
 using System.Diagnostics;
@@ -15,8 +14,7 @@ public abstract class Request : ISnmpRequest {
     protected IPEndPoint _peerEndPoint;
     protected int _requestId = 0;
     protected int _retries = 1;
-    private Authentication? AuthProvider;
-    private Privacy? PrivacyProvider;
+
 
     public abstract Integer Version { get; }
     public abstract IRequestPdu Pdu { get; init; }
@@ -56,39 +54,35 @@ public abstract class Request : ISnmpRequest {
     public static SnmpV3Request CreateV3(
         string ip,
         string userName,
-        string[] oids,
         string contextEngineId = "",
         int port = 161,
         int timeout = 0,
         int retries = 0
-    ) => CreateV3Internal(ip, null, null, userName, oids, contextEngineId, port, timeout, retries);
+    ) => CreateV3Internal(ip, null, null, userName, contextEngineId, port, timeout, retries);
     public static SnmpV3Request CreateV3(
         string ip,
         AuthenticationDigest digest,
         string userName,
-        string[] oids,
         string contextEngineId = "",
         int port = 161,
         int timeout = 0,
         int retries = 0
-    ) => CreateV3Internal(ip, digest, null, userName, oids, contextEngineId, port, timeout, retries);
+    ) => CreateV3Internal(ip, digest, null, userName, contextEngineId, port, timeout, retries);
     public static SnmpV3Request CreateV3(
         string ip,
         AuthenticationDigest digest,
         PrivacyProtocol privacy,
         string userName,
-        string[] oids,
         string contextEngineId = "",
         int port = 161,
         int timeout = 0,
         int retries = 0
-    ) => CreateV3Internal(ip, digest, privacy, userName, oids, contextEngineId, port, timeout, retries);
+    ) => CreateV3Internal(ip, digest, privacy, userName, contextEngineId, port, timeout, retries);
     private static SnmpV3Request CreateV3Internal(
         string ip,
         AuthenticationDigest? digest,
         PrivacyProtocol? privacy,
         string userName,
-        string[] oids,
         string contextEngineId = "",
         int port = 161,
         int timeout = 0,
@@ -123,12 +117,6 @@ public abstract class Request : ISnmpRequest {
         Asn1Tag requestTag = new(TagClass.ContextSpecific, 0, true);
         int requestId = Random.Shared.Next();
         List<VarBinding> vbs = [];
-        Asn1Null nullVal = new();
-        foreach (string oid in oids) {
-            ObjectIdentifier oidNode = new(new OidStruct(oid));
-            VarBinding vb = new([], oidNode, nullVal);
-            vbs.Add(vb);
-        }
         SnmpPdu pdu = new([], requestTag, requestId, 0, 0, vbs);
         ScopedPdu sPdu = new(
             new(contextEngineId),
@@ -140,37 +128,9 @@ public abstract class Request : ISnmpRequest {
             AuthCred = authCred,
             PrivCred = privCred,
             _msgUserName = new(userName),
-            AuthProvider = authProvider,
-            PrivacyProvider = privacyProvider
+            AuthAlgo = authProvider,
+            PrivAlgo = privacyProvider
         };
     }
-    public abstract ReadOnlySpan<byte> Construct();
-    public IAsn1Structure? Send() {
-        if (this is SnmpV3Request v3) {
-            v3.Discover();
-        }
-        ReadOnlySpan<byte> requestBytes = Construct();
-        int recv = 0;
-        int retry = 0;
-        Span<byte> inBuffer = stackalloc byte[64 * 1024];
-        while (true) {
-            try {
-                _socket.SendTo(requestBytes, _peerEndPoint);
-                recv = _socket.Receive(inBuffer);
-            } catch (SocketException se) {
-                recv = se.ErrorCode switch {
-                    10040 => 0, // Packet too large
-                    10060 => 0, // Timeout
-                    _ => throw new SnmpException(SnmpExceptionCodes.NetworkError, se.SocketErrorCode.ToString(), se)
-                };
-            }
-            if (recv > 0) {
-                return Parser.ParseSnmp(inBuffer);
-            } else {
-                if (++retry > _retries) {
-                    throw new SnmpException(SnmpExceptionCodes.RequestTimedOut, "Request has reached maximum retries.");
-                }
-            }
-        }
-    }
+    public abstract ReadOnlySpan<byte> Construct(string[] oids, out long requestId);
 }
