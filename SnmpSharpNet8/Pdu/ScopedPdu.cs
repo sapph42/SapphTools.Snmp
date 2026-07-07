@@ -6,7 +6,7 @@ using System.Formats.Asn1;
 namespace SnmpSharpNet8.Pdu;
 
 public class ScopedPdu : IConstructable {
-    private byte[] _raw;
+    private readonly byte[] _raw;
     internal Asn1Tag Tag => new(UniversalTagNumber.OctetString);
     internal int Length = 0;
     public required OctetStringRaw ContextEngineId { get; init; }
@@ -40,7 +40,7 @@ public class ScopedPdu : IConstructable {
             .._raw
         ];
     }
-    public static ScopedPdu DiscoveryScopedPdu(out int reqId) {
+    public static ScopedPdu DiscoveryScopedPdu(out long reqId) {
         return new ScopedPdu(
             new([]),
             new([]),

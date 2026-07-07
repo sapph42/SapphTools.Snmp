@@ -21,10 +21,11 @@ public sealed class BulkRequestPdu : Asn1Node, IRequestPdu {
         MaxRepititions = maxRepetitions;
         VarBindings = varBindings;
     }
-    public override ReadOnlySpan<byte> Construct() => ConstructRequest();
-    public ReadOnlySpan<byte> ConstructRequest() {
+    public override ReadOnlySpan<byte> Construct() => ConstructRequest([], out _);
+    public ReadOnlySpan<byte> Construct(string[] _, out long requestId) => ConstructRequest([], out requestId);
+    public ReadOnlySpan<byte> ConstructRequest(string[] _, out long requestId) {
         int tagValue = PduType.TagValue;
-        int reqId = (int)Math.Clamp(RequestId, 0, int.MaxValue);
+        requestId = RequestId;
         int nonRep = NonRepeaters;
         int maxRep = MaxRepititions;
         List<byte> varBindings = [];
@@ -33,7 +34,7 @@ public sealed class BulkRequestPdu : Asn1Node, IRequestPdu {
         }
         return (byte[])[
             ..BitConverter.GetBytes(tagValue),
-            ..BitConverter.GetBytes(reqId),
+            ..BitConverter.GetBytes(requestId),
             ..BitConverter.GetBytes(nonRep),
             ..BitConverter.GetBytes(maxRep),
             ..varBindings
