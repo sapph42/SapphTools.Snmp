@@ -4,12 +4,14 @@ using static SapphTools.Asn1.Parser;
 using System.Formats.Asn1;
 using SnmpSharpNet8.Pdu;
 using SnmpSharpNet8.Security;
+using System.Security.Cryptography;
 
 namespace SnmpSharpNet8.Messages;
 
 public static class Parser {
-    public static IAsn1Structure ParseSnmp(Span<byte> rawSpan, Authentication? auth = null, Privacy? priv = null) => ParseSnmp(raw: [.. rawSpan], auth, priv);
-    public static IAsn1Structure ParseSnmp(byte[] raw, Authentication? auth = null, Privacy? priv = null) {
+    public static IAsn1Structure ParseSnmp(Span<byte> rawSpan, Authentication? auth = null, Privacy? priv = null, Credential? authCred = null, Credential? privCred = null) => 
+        ParseSnmp(raw: [.. rawSpan], auth, priv, authCred, privCred);
+    public static IAsn1Structure ParseSnmp(byte[] raw, Authentication? auth = null, Privacy? priv = null, Credential? authCred = null, Credential? privCred = null) {
         ReadOnlySpan<byte> span = raw;
 
         Asn1Tag msgTag = Asn1.ReadTag(span);
@@ -30,7 +32,7 @@ public static class Parser {
                 Pdu = pdu
             };
         } else if (version == 3) {
-            return ParseSnmpv3(span, pos, auth, priv);
+            return ParseSnmpv3(span, pos, auth, priv, authCred, privCred);
         } else {
             throw new NotSupportedException($"Only versions 2 and 3 are supported. Actual version parsed: {version}");
         }
@@ -52,7 +54,7 @@ public static class Parser {
 
         return ParsePdu(pduTlv, pduTag, pduBody);
     }
-    private static SnmpV3Asn1Structure ParseSnmpv3(ReadOnlySpan<byte> body, int pos, Authentication? auth = null, Privacy? priv = null) {
+    private static SnmpV3Asn1Structure ParseSnmpv3(ReadOnlySpan<byte> body, int pos, Authentication? auth, Privacy? priv, Credential? authCred, Credential? privCred) {
         Asn1Tag headerDataTag = Asn1.ReadTag(body[pos..]);
         Expect(headerDataTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "msgGlobalData");
         IDataType.GetLength(body[pos..], out int headerDataLength, out int headerDataBodyIndex);
@@ -69,28 +71,64 @@ public static class Parser {
 
         Asn1Tag secParamTag = Asn1.ReadTag(paramEnv.Raw);
         Expect(secParamTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "UsmSecurityParameters");
-        IDataType.GetLength(paramEnv.Raw, out int secParamLength, out int secParamIndex);
+        IDataType.GetLength(paramEnv.Raw, out int _, out int secParamIndex);
         UsmSecurityParameters secParams = new(paramEnv.Raw[secParamIndex..]);
 
         ScopedPdu? scopedPdu = null;
         OctetStringRaw? cryptEnv = null;
-        if (priv is not null) {
+        if (priv is not null && privCred is not null && auth is not null && authCred is not null) {
             Asn1Tag cryptEnvTag = Asn1.ReadTag(body[pos..]);
             Expect(cryptEnvTag, TagClass.Universal, (int)UniversalTagNumber.OctetString, "Encrypted ScopedPDU Envelope");
             IDataType.GetLength(body[pos..], out int cryptEnvLength, out int cryptEnvIndex);
             pos += cryptEnvIndex;
             cryptEnv = new(body.Slice(pos, cryptEnvLength));
-            pos += cryptEnvLength;
 
-            ReadOnlySpan<byte> encryptedBytes = cryptEnv.Raw;
-            //DECRYPT
+            ReadOnlySpan<byte> decryptedBytes = privCred.Decrypt(
+                [..cryptEnv.Raw],
+                (int)secParams.MsgAuthoritativeEngineBoots.Value,
+                (int)secParams.MsgAuthoritativeEngineTime.Value,
+                priv,
+                [..secParams.MsgPrivacyParameters.Raw]);
+
+            int scopedPos = 0;
+            Asn1Tag scopedPduTag = Asn1.ReadTag(decryptedBytes[scopedPos..]);
+            Expect(scopedPduTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "scopedPdu");
+            IDataType.GetLength(decryptedBytes[scopedPos..], out int scopedPduLength, out int scopedPduIndex);
+            scopedPos += scopedPduIndex;
+            Sequence scopedPduSeq = new(decryptedBytes.Slice(scopedPos, scopedPduLength));
+            if (scopedPduSeq.Items![0] is OctetStringRaw contextEngineId && scopedPduSeq.Items[1] is OctetStringRaw contextName && scopedPduSeq.Items[2] is SnmpPdu pdu) {
+                scopedPdu = new(contextEngineId, contextName, pdu);
+            } else {
+                throw new FormatException("Invalid ScopedPdu structure");
+            }
+            ReadOnlySpan<byte> authParams = secParams.MsgAuthenticationParameters.Raw;
+            secParams.MsgAuthenticationParameters.Raw = new byte[authParams.Length];
+            SnmpV3Asn1Structure unAuthed = new() {
+                MsgGlobalData = msgGlobalData,
+                MsgSecurityParametersEnvelope = paramEnv,
+                UsmSecurityParameters = secParams,
+                ScopedPduEnvelope = cryptEnv,
+                ScopedPdu = scopedPdu!
+            };
+            ReadOnlySpan<byte> unauthedBytes = unAuthed.Construct();
+            if (authCred.Authenticate(authParams, unauthedBytes, auth)) {
+                secParams.MsgAuthenticationParameters.Raw = authParams;
+                return new() {
+                    MsgGlobalData = msgGlobalData,
+                    MsgSecurityParametersEnvelope = paramEnv,
+                    UsmSecurityParameters = secParams,
+                    ScopedPduEnvelope = cryptEnv,
+                    ScopedPdu = scopedPdu!
+                };
+            } else {
+                throw new AuthenticationTagMismatchException();
+            }
         } else {
             Asn1Tag scopedPduTag = Asn1.ReadTag(body[pos..]);
             Expect(scopedPduTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "scopedPdu");
             IDataType.GetLength(body[pos..], out int scopedPduLength, out int scopedPduIndex);
             pos += scopedPduIndex;
             Sequence scopedPduSeq = new(body.Slice(pos, scopedPduLength));
-            pos += scopedPduLength;
             if (scopedPduSeq.Items![0] is OctetStringRaw contextEngineId && scopedPduSeq.Items[1] is OctetStringRaw contextName && scopedPduSeq.Items[2] is SnmpPdu pdu) {
                 scopedPdu = new(contextEngineId, contextName, pdu);
             }
