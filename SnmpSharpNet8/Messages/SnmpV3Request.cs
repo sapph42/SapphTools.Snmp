@@ -28,21 +28,28 @@ public class SnmpV3Request : Request {
     internal SnmpV3Request(IPAddress ip, int port, int timeout, int retries, MsgFlags flags) : base(ip, port, timeout, retries) {
         Flags = flags;
     }
-    public SnmpAsn1Structure? Get() {
-        SnmpAsn1Structure? resp = null;
+    public SnmpV3Asn1Structure? Get() {
+        SnmpV3Asn1Structure? resp = null;
         if (!_didDiscovery) {
             resp = Discover();
+            if (resp is null) {
+                throw new Exception("Define a better parsing error");
+            }
+            _msgAuthoritativeEngineID = resp.UsmSecurityParameters.MsgAuthoritativeEngineID;
+            _msgAuthoritativeEngineBoots = resp.UsmSecurityParameters.MsgAuthoritativeEngineBoots;
+            _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
         }
         return resp;
     }
-    public SnmpAsn1Structure? Discover() {
+    public SnmpV3Asn1Structure? Discover() {
         ReadOnlySpan<byte> package = Construct();
+        _socket.Connect(_peerEndPoint);
         _socket.Send(package);
         Span<byte> response = stackalloc byte[ushort.MaxValue];
         var bytesRead = _socket.Receive(response);
         response = response[..bytesRead];
         _didDiscovery = true;
-        return Parser.ParseSnmp(response);
+        return (SnmpV3Asn1Structure)Parser.ParseSnmp(response);
     }
     public override ReadOnlySpan<byte> Construct() {
         if (_msgAuthoritativeEngineID.Value == "" | _msgAuthoritativeEngineBoots.Value == 0 | _msgAuthoritativeEngineTime.Value == 0) {
@@ -72,7 +79,7 @@ public class SnmpV3Request : Request {
                 ..payload
             ];
         } else {
-            reqId = (int)Math.Clamp(ScopedPdu.RequestPdu.RequestId, 0, int.MaxValue);
+            reqId = (int)Math.Clamp(ScopedPdu.InnerPdu.RequestId, 0, int.MaxValue);
         }
         // Empty return and commented code below is temporary state for targeted testing of discovery request construction.
         // Once testing confirms valid contstruction, return will be removed, and commented code will be restored and worked on
