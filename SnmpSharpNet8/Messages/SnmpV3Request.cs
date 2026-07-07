@@ -10,14 +10,16 @@ namespace SnmpSharpNet8.Messages;
 public class SnmpV3Request : Request {
     private bool _didDiscovery = false;
     private int _messageId = 0;
-    private ushort _maxSize = ushort.MaxValue - 28;
+    private readonly ushort _maxSize = ushort.MaxValue - 28;
     private OctetStringRaw _msgAuthoritativeEngineID = new([]);
     private Integer _msgAuthoritativeEngineBoots = new(0);
     private Integer _msgAuthoritativeEngineTime = new(0);
     internal OctetStringRaw _msgUserName = new([]);
-    private OctetStringRaw _msgAuthenticationParameters = new(new byte[12]);
+    private OctetStringRaw _msgAuthenticationParameters = new([]);
     private OctetStringRaw _msgPrivacyParameters = new([]);
 
+    internal Authentication? AuthAlgo;
+    internal Privacy? PrivAlgo;
     internal Credential? AuthCred;
     internal Credential? PrivCred;
     internal MsgFlags Flags = MsgFlags.None;
@@ -25,134 +27,172 @@ public class SnmpV3Request : Request {
     public override Integer Version => new([0x3]);
     public override IRequestPdu Pdu { get; init; } = new SnmpPdu([], new Asn1Tag(UniversalTagNumber.Null), 0, 0, 0, []);
     public required ScopedPdu ScopedPdu { get; init; }
+
+    public int Timeout { get; set; } = 1000;
     internal SnmpV3Request(IPAddress ip, int port, int timeout, int retries, MsgFlags flags) : base(ip, port, timeout, retries) {
         Flags = flags;
+        Random.Shared.Next();
     }
-    public SnmpV3Asn1Structure? Get() {
-        SnmpV3Asn1Structure? resp = null;
-        if (!_didDiscovery) {
-            resp = Discover();
-            if (resp is null) {
-                throw new Exception("Define a better parsing error");
-            }
-            _msgAuthoritativeEngineID = resp.UsmSecurityParameters.MsgAuthoritativeEngineID;
-            _msgAuthoritativeEngineBoots = resp.UsmSecurityParameters.MsgAuthoritativeEngineBoots;
-            _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
+    public SnmpV3Asn1Structure? Get(string[] oids) => InternalGet(oids, null, null, null, null);
+    public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Credential authCred) => 
+        InternalGet(oids, auth, null, authCred, null);
+    public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) => 
+        InternalGet(oids, auth, priv, authCred, privCred);
+    private SnmpV3Asn1Structure? InternalGet(string[] oids, Authentication? auth, Privacy? priv, Credential? authCred, Credential? privCred) {
+        if (auth is null) {
+            Flags = MsgFlags.None;
+        } else if (priv is null) {
+            Flags = MsgFlags.AuthNoPrivRep;
+        } else {
+            Flags = MsgFlags.AuthPrivRep;
         }
-        return resp;
+        AuthCred ??= authCred;
+        PrivCred ??= privCred;
+        AuthAlgo ??= auth;
+        PrivAlgo ??= priv;
+        CancellationTokenSource cts;
+        if (!_didDiscovery) {
+            cts = new(Timeout);
+            SnmpV3Asn1Structure? resp = Discover(cts.Token);
+            if (resp is null) {
+                if (cts.IsCancellationRequested) {
+                    throw new TimeoutException("Did not recieve a proper response within the alloted timeout window.");
+                } else {
+                    throw new Exception("Define a better parsing error");
+                }
+            }
+        }
+        cts = new(Timeout);
+        ReadOnlySpan<byte> package = Construct(oids, out long requestId);
+        return Send(package, requestId, false, cts.Token);
     }
-    public SnmpV3Asn1Structure? Discover() {
-        ReadOnlySpan<byte> package = Construct();
+    private SnmpV3Asn1Structure? Send(ReadOnlySpan<byte> package, long requestId, bool disco, CancellationToken token) {
         _socket.Connect(_peerEndPoint);
         _socket.Send(package);
         Span<byte> response = stackalloc byte[ushort.MaxValue];
-        var bytesRead = _socket.Receive(response);
-        response = response[..bytesRead];
-        _didDiscovery = true;
-        return (SnmpV3Asn1Structure)Parser.ParseSnmp(response);
+        SnmpV3Asn1Structure? resp = null;
+        while (resp is null && !token.IsCancellationRequested) {
+            try {
+                int bytesRead = _socket.Receive(response);
+                response = response[..bytesRead];
+                resp = disco
+                    ? (SnmpV3Asn1Structure)Parser.ParseSnmp(response)
+                    : (SnmpV3Asn1Structure)Parser.ParseSnmp(response, AuthAlgo, PrivAlgo, AuthCred, PrivCred);
+                
+                if (resp.MsgGlobalData.MsgId.Value != _messageId || resp.ScopedPdu.InnerPdu.RequestId != requestId) {
+                    resp = null;
+                    continue;
+                }
+                _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
+            } catch {
+                resp = null;
+            }
+        }
+        return resp;
     }
-    public override ReadOnlySpan<byte> Construct() {
+    public SnmpV3Asn1Structure? Discover(CancellationToken token) {
+        ReadOnlySpan<byte> package = Construct([], out long requestId);
+        SnmpV3Asn1Structure? resp = Send(package, requestId, true, token);
+        if (resp is not null) {
+            _msgAuthoritativeEngineID = resp.UsmSecurityParameters.MsgAuthoritativeEngineID;
+            _msgAuthoritativeEngineBoots = resp.UsmSecurityParameters.MsgAuthoritativeEngineBoots;
+            _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
+            _msgAuthenticationParameters = new(new string('\0', AuthAlgo?.AuthHeaderLength ?? 0));
+            _msgPrivacyParameters = new(new string('\0', PrivAlgo?.PrivacyParametersLength ?? 0));
+            _didDiscovery = true;
+        }
+        return resp;
+    }
+    public override ReadOnlySpan<byte> Construct(string[] oids, out long requestId) {
         if (_msgAuthoritativeEngineID.Value == "" | _msgAuthoritativeEngineBoots.Value == 0 | _msgAuthoritativeEngineTime.Value == 0) {
             _didDiscovery = false;
         }
-        Sequence msgGlobalData = BuildMsgGlobalData();
-        Sequence usmSecurityParameters = BuildUsmSecurityParameters();
-        OctetStringRaw msgSecurityParameters = new(usmSecurityParameters.Construct());
-        ReadOnlySpan<byte> pduBytes = ScopedPdu.ConstructRequest();
-        int reqId;
-        byte[] payload;
-        ReadOnlySpan<byte> ver = Version.Construct();
-        ReadOnlySpan<byte> mgd = msgGlobalData.Construct();
-        ReadOnlySpan<byte> msp = msgSecurityParameters.Construct();
-        ScopedPdu pdu = ScopedPdu.DiscoveryScopedPdu(out reqId);
-        ReadOnlySpan<byte> spdu = pdu.Construct();
+        ReadOnlySpan<byte> spdu;
         if (!_didDiscovery) {
-            payload = [
-                ..ver,
-                ..mgd,
-                ..msp,
-                ..spdu
-            ];
-            return (byte[])[
-                0x30,
-                ..IDataType.EncodeLength(payload.Length),
-                ..payload
-            ];
-        } else {
-            reqId = (int)Math.Clamp(ScopedPdu.InnerPdu.RequestId, 0, int.MaxValue);
+            ScopedPdu pdu = ScopedPdu.DiscoveryScopedPdu(out requestId);
+            spdu = pdu.Construct();
+            return BuildRequest(spdu);
         }
-        // Empty return and commented code below is temporary state for targeted testing of discovery request construction.
-        // Once testing confirms valid contstruction, return will be removed, and commented code will be restored and worked on
-        return Span<byte>.Empty;
-        //byte[] request;
-        //if ((Flags & MsgFlags.Priv) == MsgFlags.Priv && _didDiscovery) {
-        //    pduBytes = SomeCryptoCall(pduBytes, otherThings, out byte[] msgPrivacyParameters);
-        //    _msgPrivacyParameters = new OctetStringRaw(msgPrivacyParameters);
-        //    OctetStringRaw cypherPdu = new(pduBytes);
-        //    pduBytes = [.. cypherPdu.Construct()];
-        //}
-
-        //payload = [
-        //    ..Version.Construct(),
-        //    ..msgGlobalData.Construct(),
-        //    ..msgSecurityParameters.Construct(),
-        //    ..pduBytes
-        //];
-        //request = [
-        //    0x30,
-        //    ..IDataType.EncodeLength(payload.Length),
-        //    ..payload
-        //];
-        //// CHECK FLAGS - HASH HERE 
-        //if ((Flags & MsgFlags.Auth) == MsgFlags.Auth && _didDiscovery) {
-        //    _msgAuthenticationParameters = new(SomeHashCall(request));
-        //    msgSecurityParameters = new(usmSecurityParameters.Construct());
-        //    payload = [
-        //        ..Version.Construct(),
-        //        ..msgGlobalData.Construct(),
-        //        ..msgSecurityParameters.Construct(),
-        //        ..pduBytes
-        //    ];
-        //    return (byte[])[
-        //        0x30,
-        //        ..IDataType.EncodeLength(payload.Length),
-        //        ..payload
-        //    ];
-        //} else {
-        //    return request;
-        //}
+        List<VarBinding> vbs = [];
+        Asn1Null nullVal = new();
+        foreach (string oid in oids) {
+            ObjectIdentifier oidNode = new(new OidStruct(oid));
+            VarBinding vb = new([], oidNode, nullVal);
+            vbs.Add(vb);
+        }
+        SnmpPdu innerPdu = SnmpPdu.Build(
+            new Asn1Tag(TagClass.ContextSpecific, 0, true),
+            vbs
+        );
+        requestId = innerPdu.RequestId;
+        ScopedPdu scopedPdu = new(_msgAuthoritativeEngineID, OctetStringRaw.Empty, innerPdu);
+        spdu = scopedPdu.Construct();
+        byte[] request;
+        if (PrivAlgo is not null && PrivCred is not null && AuthAlgo is not null && AuthCred is not null) {
+            spdu = PrivCred.Encrypt(
+                spdu,
+                _msgAuthoritativeEngineID.Raw,
+                _msgAuthoritativeEngineBoots.Value,
+                _msgAuthoritativeEngineTime.Value,
+                PrivAlgo,
+                AuthAlgo,
+                out byte[] privParams);
+            _msgPrivacyParameters = new(privParams);
+            OctetStringRaw encryptedPdu = new(spdu);
+            request = BuildRequest(encryptedPdu.Construct());
+            _msgAuthenticationParameters = new(
+                AuthCred.GenerateHash(request, _msgAuthoritativeEngineID.Raw, AuthAlgo)
+            );
+        } else if (AuthAlgo is not null && AuthCred is not null) {
+            request = BuildRequest(spdu);
+            _msgAuthenticationParameters = new(
+                AuthCred.GenerateHash(request, _msgAuthoritativeEngineID.Raw, AuthAlgo)
+            );
+        }
+        return BuildRequest(spdu);
     }
-    private Sequence BuildMsgGlobalData() {
+    private byte[] BuildRequest(ReadOnlySpan<byte> spdu) {
+        return [
+            0x30,
+            ..IDataType.EncodeLength(BuildPayload(spdu, out byte[] payload)),
+            ..payload
+        ];
+    }
+    private int BuildPayload(ReadOnlySpan<byte> spdu, out byte[] payload) {
+        payload = [
+            ..Version.Construct(),
+            ..BuildMsgGlobalData().Construct(),
+            ..new OctetStringRaw(BuildUsmSecurityParameters().Construct()).Construct(),
+            ..spdu
+        ];
+        return payload.Length;
+    }
+    private MsgGlobalData BuildMsgGlobalData() {
         _messageId = Random.Shared.Next();
         Integer messageId = new(_messageId);
         Integer maxMsgSize = new(_maxSize);
         OctetStringRaw flags = new(_didDiscovery ? [(byte)Flags] : [0x4]);
         Integer secModel = new(3);
-        Sequence msgGlobalData = new([]);
-        msgGlobalData.AddChild(messageId);
-        msgGlobalData.AddChild(maxMsgSize);
-        msgGlobalData.AddChild(flags);
-        msgGlobalData.AddChild(secModel);
-        return msgGlobalData;
+        return new MsgGlobalData(messageId, maxMsgSize, flags, secModel);
     }
-    private Sequence BuildUsmSecurityParameters() {
-        Sequence usmSecurityParameters = new([]);
+    private UsmSecurityParameters BuildUsmSecurityParameters() {
         if (_didDiscovery) {
-            usmSecurityParameters.AddChild(_msgAuthoritativeEngineID);
-            usmSecurityParameters.AddChild(_msgAuthoritativeEngineBoots);
-            usmSecurityParameters.AddChild(_msgAuthoritativeEngineTime);
-            usmSecurityParameters.AddChild(_msgUserName);
-            usmSecurityParameters.AddChild(_msgAuthenticationParameters);
-            usmSecurityParameters.AddChild(_msgPrivacyParameters);
+            return new(
+                _msgAuthoritativeEngineID, 
+                _msgAuthoritativeEngineBoots, 
+                _msgAuthoritativeEngineTime,
+                _msgUserName,
+                _msgAuthenticationParameters,
+                _msgPrivacyParameters);
         } else {
-            usmSecurityParameters.AddChild(OctetStringRaw.Empty);
-            usmSecurityParameters.AddChild(new Integer(0));
-            usmSecurityParameters.AddChild(new Integer(0));
-            usmSecurityParameters.AddChild(OctetStringRaw.Empty);
-            usmSecurityParameters.AddChild(OctetStringRaw.Empty);
-            usmSecurityParameters.AddChild(OctetStringRaw.Empty);
+            return new(
+                OctetStringRaw.Empty,
+                new Integer(0),
+                new Integer(0),
+                OctetStringRaw.Empty,
+                OctetStringRaw.Empty,
+                OctetStringRaw.Empty);
         }
-        return usmSecurityParameters;
     }
 }
 /* SNMP REQUEST AND RESPONSE STRUCTURE - TEMPORARY REFERENCE, DO NOT INCLUDE IN COMMIT COMMENTS 
