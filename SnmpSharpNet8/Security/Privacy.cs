@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace SnmpSharpNet8.Security; 
 public class Privacy {
-    private IPrivacyProtocol? cryptoInstance = null;
+    private readonly IPrivacyProtocol? cryptoInstance = null;
     public PrivacyProtocol Algorithm { get; private set; }
     public required Authentication Auth { get; init; }
     public int PrivacyParametersLength => cryptoInstance?.PrivacyParametersLength ?? 0;
@@ -21,10 +21,20 @@ public class Privacy {
         Algorithm = algo;
         Auth = auth;
     }
-    public ReadOnlySpan<byte> Decrypt(byte[] encryptedData, byte[] key, int engineBoots, int engineTime, Span<byte> privacyParameters)
-        => GetNewInstance().Decrypt(encryptedData, key, engineBoots, engineTime, privacyParameters);
-    public ReadOnlySpan<byte> Encrypt(byte[] unencryptedData, byte[] key, int engineBoots, int engineTime, out Span<byte> privacyParameters)
-        => GetNewInstance().Encrypt(unencryptedData, key, engineBoots, engineTime, out privacyParameters);
+    public ReadOnlySpan<byte> Decrypt(
+            ReadOnlySpan<byte> encryptedData,
+            Span<byte> key,
+            int engineBoots,
+            int engineTime,
+            Span<byte> privacyParameters
+    ) => GetNewInstance().Decrypt(encryptedData, key, engineBoots, engineTime, privacyParameters);
+    public ReadOnlySpan<byte> Encrypt(
+            ReadOnlySpan<byte> unencryptedData,
+            Span<byte> key,
+            int engineBoots,
+            int engineTime,
+            out byte[] privacyParameters
+    ) => GetNewInstance().Encrypt(unencryptedData, key, engineBoots, engineTime, out privacyParameters);
     private IPrivacyProtocol GetNewInstance() {
         return Algorithm switch {
             PrivacyProtocol.AES128 => new PrivacyAES128(Auth),
