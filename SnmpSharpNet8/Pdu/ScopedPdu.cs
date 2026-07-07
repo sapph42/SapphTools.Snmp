@@ -14,16 +14,16 @@ public class ScopedPdu : IConstructable {
     public ReadOnlySpan<byte> Raw {
         get => _raw;
     }
-    public required SnmpPdu RequestPdu { get; init; }
+    public required SnmpPdu InnerPdu { get; init; }
 
     [SetsRequiredMembers]
     internal ScopedPdu(OctetStringRaw contextEngineId, OctetStringRaw contextName, SnmpPdu requestPdu) {
         ContextEngineId = contextEngineId;
         ContextName = contextName;
-        RequestPdu = requestPdu;
+        InnerPdu = requestPdu;
         ReadOnlySpan<byte> cei = ContextEngineId.Construct();
         ReadOnlySpan<byte> cn = ContextName.Construct();
-        ReadOnlySpan<byte> rp = RequestPdu.Construct();
+        ReadOnlySpan<byte> rp = InnerPdu.Construct();
         Length = cei.Length + cn.Length + rp.Length;
         _raw = new byte[Length];
         cei.CopyTo(_raw);
