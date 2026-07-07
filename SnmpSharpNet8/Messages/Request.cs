@@ -145,7 +145,7 @@ public abstract class Request : ISnmpRequest {
         };
     }
     public abstract ReadOnlySpan<byte> Construct();
-    public SnmpAsn1Structure? Send() {
+    public IAsn1Structure? Send() {
         if (this is SnmpV3Request v3) {
             v3.Discover();
         }
