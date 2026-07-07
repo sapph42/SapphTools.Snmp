@@ -13,4 +13,18 @@ public class UsmSecurityParameters : Sequence {
             throw new ArgumentException($"UsmSecurityParameters expects a SEQUENCE of 6 items exactly. Actual: {Items.Count}");
         }
     }
+    public UsmSecurityParameters(
+            OctetStringRaw engineId, 
+            Integer boots, 
+            Integer time, 
+            OctetStringRaw userName, 
+            OctetStringRaw authParams, 
+            OctetStringRaw privParams) : base([]) {
+        AddChild(engineId);
+        AddChild(boots);
+        AddChild(time);
+        AddChild(userName);
+        AddChild(authParams);
+        AddChild(privParams);
+    }
 }

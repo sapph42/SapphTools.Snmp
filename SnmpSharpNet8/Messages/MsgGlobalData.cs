@@ -11,4 +11,10 @@ public class MsgGlobalData : Sequence {
             throw new ArgumentException($"MsgGlobalData expects a SEQUENCE of 4 items exactly. Actual: {Items.Count}");
         }
     }
+    public MsgGlobalData(Integer msgId, Integer maxSize, OctetStringRaw flags, Integer secModel) : base([]) {
+        AddChild(msgId);
+        AddChild(maxSize);
+        AddChild(flags);
+        AddChild(secModel);
+    }
 }
