@@ -9,13 +9,12 @@ using System.Net.Sockets;
 
 namespace SnmpSharpNet8.Messages;
 
-public abstract class Request : ISnmpRequest {
+public abstract class Request : ISnmpRequest, IDisposable {
     protected Socket _socket;
     protected bool _socketDisposed;
     protected IPEndPoint _peerEndPoint;
     protected int _requestId;
     protected int _retries = 1;
-
 
     public abstract Integer Version { get; }
     public abstract IRequestPdu Pdu { get; init; }
@@ -134,4 +133,9 @@ public abstract class Request : ISnmpRequest {
         };
     }
     public abstract ReadOnlySpan<byte> Construct(string[] oids, out long requestId);
+
+    public void Dispose() {
+        _socket.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }
