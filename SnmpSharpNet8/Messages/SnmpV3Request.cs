@@ -8,8 +8,8 @@ using System.Net;
 namespace SnmpSharpNet8.Messages;
 
 public class SnmpV3Request : Request {
-    private bool _didDiscovery = false;
-    private int _messageId = 0;
+    private bool _didDiscovery;
+    private int _messageId;
     private readonly ushort _maxSize = ushort.MaxValue - 28;
     private OctetStringRaw _msgAuthoritativeEngineID = new([]);
     private Integer _msgAuthoritativeEngineBoots = new(0);
@@ -31,21 +31,19 @@ public class SnmpV3Request : Request {
     public int Timeout { get; set; } = 1000;
     internal SnmpV3Request(IPAddress ip, int port, int timeout, int retries, MsgFlags flags) : base(ip, port, timeout, retries) {
         Flags = flags;
-        Random.Shared.Next();
+        _ = Random.Shared.Next();
     }
     public SnmpV3Asn1Structure? Get(string[] oids) => InternalGet(oids, null, null, null, null);
-    public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Credential authCred) => 
+    public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Credential authCred) =>
         InternalGet(oids, auth, null, authCred, null);
-    public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) => 
+    public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
         InternalGet(oids, auth, priv, authCred, privCred);
     private SnmpV3Asn1Structure? InternalGet(string[] oids, Authentication? auth, Privacy? priv, Credential? authCred, Credential? privCred) {
-        if (auth is null) {
-            Flags = MsgFlags.None;
-        } else if (priv is null) {
-            Flags = MsgFlags.AuthNoPrivRep;
-        } else {
-            Flags = MsgFlags.AuthPrivRep;
-        }
+        Flags = auth is null
+            ? MsgFlags.None
+            : priv is null
+                ? MsgFlags.AuthNoPrivRep
+                : MsgFlags.AuthPrivRep;
         AuthCred ??= authCred;
         PrivCred ??= privCred;
         AuthAlgo ??= auth;
@@ -58,7 +56,7 @@ public class SnmpV3Request : Request {
                 if (cts.IsCancellationRequested) {
                     throw new TimeoutException("Did not recieve a proper response within the alloted timeout window.");
                 } else {
-                    throw new Exception("Define a better parsing error");
+                    throw new AsnContentException("Unable to parse SNMP Discovery response");
                 }
             }
         }
@@ -68,7 +66,7 @@ public class SnmpV3Request : Request {
     }
     private SnmpV3Asn1Structure? Send(ReadOnlySpan<byte> package, long requestId, bool disco, CancellationToken token) {
         _socket.Connect(_peerEndPoint);
-        _socket.Send(package);
+        _ = _socket.Send(package);
         Span<byte> response = stackalloc byte[ushort.MaxValue];
         SnmpV3Asn1Structure? resp = null;
         while (resp is null && !token.IsCancellationRequested) {
@@ -78,7 +76,7 @@ public class SnmpV3Request : Request {
                 resp = disco
                     ? (SnmpV3Asn1Structure)Parser.ParseSnmp(response)
                     : (SnmpV3Asn1Structure)Parser.ParseSnmp(response, AuthAlgo, PrivAlgo, AuthCred, PrivCred);
-                
+
                 if (resp.MsgGlobalData.MsgId.Value != _messageId || resp.ScopedPdu.InnerPdu.RequestId != requestId) {
                     resp = null;
                     continue;
@@ -176,23 +174,21 @@ public class SnmpV3Request : Request {
         return new MsgGlobalData(messageId, maxMsgSize, flags, secModel);
     }
     private UsmSecurityParameters BuildUsmSecurityParameters() {
-        if (_didDiscovery) {
-            return new(
-                _msgAuthoritativeEngineID, 
-                _msgAuthoritativeEngineBoots, 
+        return _didDiscovery
+            ? new(
+                _msgAuthoritativeEngineID,
+                _msgAuthoritativeEngineBoots,
                 _msgAuthoritativeEngineTime,
                 _msgUserName,
                 _msgAuthenticationParameters,
-                _msgPrivacyParameters);
-        } else {
-            return new(
+                _msgPrivacyParameters)
+            : new(
                 OctetStringRaw.Empty,
                 new Integer(0),
                 new Integer(0),
                 OctetStringRaw.Empty,
                 OctetStringRaw.Empty,
                 OctetStringRaw.Empty);
-        }
     }
 }
 /* SNMP REQUEST AND RESPONSE STRUCTURE - TEMPORARY REFERENCE, DO NOT INCLUDE IN COMMIT COMMENTS 
