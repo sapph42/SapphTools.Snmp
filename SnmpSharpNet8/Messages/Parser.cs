@@ -1,15 +1,15 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
-using static SapphTools.Asn1.Parser;
-using System.Formats.Asn1;
 using SnmpSharpNet8.Pdu;
 using SnmpSharpNet8.Security;
+using System.Formats.Asn1;
 using System.Security.Cryptography;
+using static SapphTools.Asn1.Parser;
 
 namespace SnmpSharpNet8.Messages;
 
 public static class Parser {
-    public static IAsn1Structure ParseSnmp(Span<byte> rawSpan, Authentication? auth = null, Privacy? priv = null, Credential? authCred = null, Credential? privCred = null) => 
+    public static IAsn1Structure ParseSnmp(Span<byte> rawSpan, Authentication? auth = null, Privacy? priv = null, Credential? authCred = null, Credential? privCred = null) =>
         ParseSnmp(raw: [.. rawSpan], auth, priv, authCred, privCred);
     public static IAsn1Structure ParseSnmp(byte[] raw, Authentication? auth = null, Privacy? priv = null, Credential? authCred = null, Credential? privCred = null) {
         ReadOnlySpan<byte> span = raw;
@@ -31,12 +31,11 @@ public static class Parser {
                 Community = community,
                 Pdu = pdu
             };
-        } else if (version == 3) {
-            return ParseSnmpv3(span, pos, auth, priv, authCred, privCred);
         } else {
-            throw new NotSupportedException($"Only versions 2 and 3 are supported. Actual version parsed: {version}");
+            return version == 3
+                ? (IAsn1Structure)ParseSnmpv3(span, pos, auth, priv, authCred, privCred)
+                : throw new NotSupportedException($"Only versions 2 and 3 are supported. Actual version parsed: {version}");
         }
-
 
     }
     private static SnmpPdu ParseSnmpv2(ReadOnlySpan<byte> body, int pos, out string community) {
@@ -44,10 +43,12 @@ public static class Parser {
 
         ReadOnlySpan<byte> pduRest = body[pos..];
         Asn1Tag pduTag = Asn1.ReadTag(pduRest);
-        if (pduTag.TagClass != TagClass.ContextSpecific || !pduTag.IsConstructed)
+        if (pduTag.TagClass != TagClass.ContextSpecific || !pduTag.IsConstructed) {
             throw new FormatException(
                 $"Expected context-constructed PDU tag, got {Describe(pduTag)} " +
                 $"({GetBlock(pduRest)})");
+        }
+
         IDataType.GetLength(pduRest, out int pduLen, out int pduStart);
         ReadOnlySpan<byte> pduBody = pduRest.Slice(pduStart, pduLen);
         ReadOnlySpan<byte> pduTlv = pduRest[..(pduStart + pduLen)];
@@ -84,11 +85,11 @@ public static class Parser {
             cryptEnv = new(body.Slice(pos, cryptEnvLength));
 
             ReadOnlySpan<byte> decryptedBytes = privCred.Decrypt(
-                [..cryptEnv.Raw],
+                [.. cryptEnv.Raw],
                 (int)secParams.MsgAuthoritativeEngineBoots.Value,
                 (int)secParams.MsgAuthoritativeEngineTime.Value,
                 priv,
-                [..secParams.MsgPrivacyParameters.Raw]);
+                [.. secParams.MsgPrivacyParameters.Raw]);
 
             int scopedPos = 0;
             Asn1Tag scopedPduTag = Asn1.ReadTag(decryptedBytes[scopedPos..]);
@@ -96,11 +97,9 @@ public static class Parser {
             IDataType.GetLength(decryptedBytes[scopedPos..], out int scopedPduLength, out int scopedPduIndex);
             scopedPos += scopedPduIndex;
             Sequence scopedPduSeq = new(decryptedBytes.Slice(scopedPos, scopedPduLength));
-            if (scopedPduSeq.Items![0] is OctetStringRaw contextEngineId && scopedPduSeq.Items[1] is OctetStringRaw contextName && scopedPduSeq.Items[2] is SnmpPdu pdu) {
-                scopedPdu = new(contextEngineId, contextName, pdu);
-            } else {
-                throw new FormatException("Invalid ScopedPdu structure");
-            }
+            scopedPdu = scopedPduSeq.Items![0] is OctetStringRaw contextEngineId && scopedPduSeq.Items[1] is OctetStringRaw contextName && scopedPduSeq.Items[2] is SnmpPdu pdu
+                ? new(contextEngineId, contextName, pdu)
+                : throw new FormatException("Invalid ScopedPdu structure");
             ReadOnlySpan<byte> authParams = secParams.MsgAuthenticationParameters.Raw;
             secParams.MsgAuthenticationParameters.Raw = new byte[authParams.Length];
             SnmpV3Asn1Structure unAuthed = new() {
