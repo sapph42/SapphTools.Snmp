@@ -1,0 +1,9 @@
+{
+	"$schema": "https://aka.ms/CsWin32.schema.json",
+	"allowMarshaling": true,
+	"friendlyOverloads": {
+		"includePointerOverloads": true,
+		"enabled": true
+	},
+	"useSafeHandles": true
+}

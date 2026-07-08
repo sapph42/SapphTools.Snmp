@@ -1,183 +1,148 @@
 ﻿using SnmpSharpNet8.Memory;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Security.Cryptography;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
+using Windows.Win32.Security.Credentials;
 
 namespace SnmpSharpNet8.Interop;
-internal static partial class CredApi {
-    [Flags]
-    public enum PromptFlags {
-        CREDUIWIN_GENERIC                   = 0x00000001,
-        CREDUIWIN_CHECKBOX                  = 0x00000002,
-        CREDUIWIN_AUTHPACKAGE_ONLY          = 0x00000010,
-        CREDUIWIN_IN_CRED_ONLY              = 0x00000020,
-        CREDUIWIN_ENUMERATE_ADMINS          = 0x00000100,
-        CREDUIWIN_ENUMERATE_CURRENT_USER    = 0x00000200,
-        CREDUIWIN_SECURE_PROMPT             = 0x00001000,
-        CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY = 0x00040000,
-        CREDUIWIN_PACK_32_WOW               = 0x10000000,
-        BASIC                               = CREDUIWIN_GENERIC | CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY
-    }
-    public struct CredentialPack {
-        public StringBuilder UserName;
-        public StringBuilder Domain;
+
+internal static unsafe partial class CredApi {
+    public ref struct CredentialPack {
+        public ReadOnlySpan<char> UserName;
+        public ReadOnlySpan<char> Domain;
         public SafeMemoryHandle Password;
     }
-    public static SafeMemoryHandle WindowsCredentialsPrompt(string prompt, IntPtr? owner, SafeMemoryHandle prePack, PromptFlags flags) {
-        CREDUI_INFO info = new() {
-            pszCaptionText = prompt,
-            pszMessageText = prompt,
-            hwndParent = owner,
-            hbmBanner = IntPtr.Zero
-        };
-        info.cbSize = Marshal.SizeOf(info);
-        uint authPackage = 0;
-        bool save = false;
-        uint ret = CredUIPromptForWindowsCredentials(
-                ref info,
+    private static readonly HWND HWND_NULL = new(IntPtr.Zero);
+    public static SafeMemoryHandle WindowsCredentialsPrompt(string prompt, IntPtr? owner, SafeMemoryHandle prePack, CREDUIWIN_FLAGS flags) {
+        IntPtr credBuffer;
+        uint credBufferLength;
+        uint ret = 0;
+        fixed (char* p = prompt) {
+            PCWSTR caption = new(p);
+            HWND parent = new(owner ?? IntPtr.Zero);
+            HBITMAP banner = new(IntPtr.Zero);
+            CREDUI_INFOW info = new() {
+                pszCaptionText = caption,
+                pszMessageText = caption,
+                hwndParent = parent,
+                hbmBanner = banner
+            };
+            info.cbSize = (uint)Marshal.SizeOf(info);
+            uint authPackage = 0;
+            BOOL save = false;
+            Span<byte> inBuff = stackalloc byte[(int)prePack.Length];
+            prePack.Read(inBuff);
+            ret = PInvoke.CredUIPromptForWindowsCredentials(
+                info,
                 0,
                 ref authPackage,
-                prePack.DangerousGetHandle(),
-                prePack.Length,
-                out IntPtr credBuffer,
-                out uint credBufferLength,
+                inBuff,
+                out void* credPointer,
+                out credBufferLength,
                 ref save,
                 flags
             );
-        if (ret == 0) {
-            return new SafeMemoryHandle(credBuffer, true, credBufferLength, SafeMemoryHandle.MemoryType.CoTaskMem);
+            credBuffer = (IntPtr)credPointer;
         }
-        return SafeMemoryHandle.Zero;
+        return ret == 0
+            ? new SafeMemoryHandle(credBuffer, true, credBufferLength, SafeMemoryHandle.MemoryType.CoTaskMem)
+            : SafeMemoryHandle.Zero;
     }
     public static SafeMemoryHandle PackCredential(string? username) {
-        int packSize = 0;
+        uint packSize = 0;
         IntPtr pack = IntPtr.Zero;
         if (string.IsNullOrWhiteSpace(username)) {
             return SafeMemoryHandle.Zero;
         }
-        _ = CredPackAuthenticationBuffer(
-            0,
-            username,
-            string.Empty,
-            pack,
-            ref packSize
-        );
-        pack = Marshal.AllocCoTaskMem(packSize);
-        _ = CredPackAuthenticationBuffer(
-            0,
-            username,
-            string.Empty,
-            pack,
-            ref packSize
-        );
-        return new SafeMemoryHandle(pack, true, packSize, SafeMemoryHandle.MemoryType.CoTaskMem);
-    }
+        Span<char> passBuffer = stackalloc char[1];
+        Span<byte> packBuff = [];
+        fixed (char* u = username, p = passBuffer) {
+            PWSTR userName = new(u);
+            PWSTR password = new(p);
+            _ = PInvoke.CredPackAuthenticationBuffer(
+                0,
+                userName,
+                password,
+                packBuff,
+                ref packSize
+            );
+            packBuff = new byte[(int)packSize];
+            _ = PInvoke.CredPackAuthenticationBuffer(
+                0,
+                userName,
+                password,
+                packBuff,
+                ref packSize
+            );
+        }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct CREDUI_INFO {
-        public int cbSize;
-        public IntPtr? hwndParent;
-        public string pszMessageText;
-        public string pszCaptionText;
-        public IntPtr hbmBanner;
+        SafeMemoryHandle ret = SafeMemoryHandle.Create(SafeMemoryHandle.MemoryType.CoTaskMem, packSize);
+        ret.Write(packBuff);
+        return ret;
     }
-
-    [DllImport("credui.dll", EntryPoint = "CredUIPromptForWindowsCredentialsW")]
-    private extern static uint CredUIPromptForWindowsCredentials(
-        ref CREDUI_INFO credUiInfo,
-        int authError,
-        ref uint authPackage,
-        IntPtr InAuthBuffer,
-        uint InAuthBufferSize,
-        out IntPtr refOutAuthBuffer,
-        out uint refOutAuthBufferSize,
-        [MarshalAs(UnmanagedType.Bool)] ref bool fSave,
-        PromptFlags flags
-    );
     public static int GetPassLength(SafeMemoryHandle authBuffer) {
         if (authBuffer.IsInvalid) {
             return -1;
         }
-        int userLength = 0;
-        int domainLength = 0;
-        int passLength = 0;
-        _ = CredUnPackAuthenticationBuffer(
+        uint userLength = 0;
+        uint passLength = 0;
+        _ = PInvoke.CredUnPackAuthenticationBuffer(
             0,
-            authBuffer.DangerousGetHandle(),
+            (void*)authBuffer.DangerousGetHandle(),
             authBuffer.Length,
             null,
             ref userLength,
             null,
-            ref domainLength,
-            IntPtr.Zero,
-            ref passLength
-        );
-        return passLength;
+            null,
+            null,
+            ref passLength);
+        return (int)passLength;
     }
     public static CredentialPack UnpackAuthBuffer(SafeMemoryHandle authBuffer, bool includePassword) {
         if (authBuffer.IsInvalid) {
             return new CredentialPack();
         }
-
-        int userLength = 0;
-        int domainLength = 0;
-        int passLength = 0;
-        _ = CredUnPackAuthenticationBuffer(
+        uint userLength = 0;
+        uint domainLength = 0;
+        uint passLength = 0;
+        ReadOnlySpan<byte> auth = new byte[authBuffer.Length];
+        authBuffer.Write(auth);
+        _ = PInvoke.CredUnPackAuthenticationBuffer(
             0,
-            authBuffer.DangerousGetHandle(),
-            authBuffer.Length,
+            auth,
             null,
             ref userLength,
             null,
             ref domainLength,
-            IntPtr.Zero,
+            null,
             ref passLength
         );
-        StringBuilder user = new(userLength);
-        StringBuilder domain = new(domainLength);
-        SafeMemoryHandle password = SafeMemoryHandle.CreateCoTaskMem((uint)((passLength + 1) * sizeof(char)));
-        _ = CredUnPackAuthenticationBuffer(
+        Span<char> user = new char[(int)userLength + 1];
+        Span<char> pass = stackalloc char[(int)passLength + 1];
+        _ = PInvoke.CredUnPackAuthenticationBuffer(
             0,
-            authBuffer.DangerousGetHandle(),
-            authBuffer.Length,
+            auth,
             user,
             ref userLength,
-            domain,
+            null,
             ref domainLength,
-            password.DangerousGetHandle(),
+            pass,
             ref passLength
         );
+        SafeMemoryHandle password = SafeMemoryHandle.Zero;
         if (!includePassword) {
-            password.Dispose();
-            password = SafeMemoryHandle.Zero;
+            CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(pass));
+        } else {
+            password = SafeMemoryHandle.CreateCoTaskMem((passLength + 1) * sizeof(char));
+            password.Write(MemoryMarshal.AsBytes(pass));
+            CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(pass));
         }
         return new CredentialPack() {
             UserName = user,
-            Domain = domain,
+            Domain = [],
             Password = password
         };
     }
-
-    [DllImport("credui.dll", CharSet = CharSet.Unicode)]
-    private static extern bool CredUnPackAuthenticationBuffer(
-        int dwFlags,
-        IntPtr pAuthBuffer,
-        uint cbAuthBuffer,
-        StringBuilder? pszUserName,
-        ref int pcchMaxUserName,
-        StringBuilder? pszDomainName,
-        ref int pcchMaxDomainname,
-        IntPtr pszPassword,
-        ref int pcchMaxPassword
-    );
-
-    [LibraryImport("credui.dll", EntryPoint = "CredPackAuthenticationBufferW", StringMarshalling = StringMarshalling.Utf16)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CredPackAuthenticationBuffer(
-        int dwFlags,
-        string pszUserName,
-        string pszPassword,
-        IntPtr pPackedCredentials,
-        ref int pcbPackedCredentials
-    );
-
 }

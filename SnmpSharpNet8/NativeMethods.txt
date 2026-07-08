@@ -1,0 +1,6 @@
+﻿CredUIPromptForWindowsCredentialsW
+CredUnPackAuthenticationBuffer
+CredPackAuthenticationBufferW
+CREDUI_INFOW
+CryptProtectMemory
+CryptUnprotectMemory
