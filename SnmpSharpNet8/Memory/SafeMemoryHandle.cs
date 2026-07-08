@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace SnmpSharpNet8.Memory;
+
 public class SafeMemoryHandle : SafeHandle {
     public enum MemoryType {
         None,
@@ -28,13 +29,18 @@ public class SafeMemoryHandle : SafeHandle {
     public void Decrypt() {
         _ = CryptMem.CryptUnprotectMemory(this);
     }
-    public SafeMemoryHandle Encrypt(bool release = true) {
+    public unsafe SafeMemoryHandle Encrypt(bool release = true) {
         if (GetEncryptSize() == EncryptedLength) {
             CryptMem.CryptProtectMemory(this);
             return this;
         }
         uint encryptSize = GetEncryptSize();
-        SafeMemoryHandle dest = WriteMem.MemCopy(this, Length, encryptSize);
+
+        SafeMemoryHandle dest = Create(Type, encryptSize);
+        Span<byte> srcData = new((void*)handle, (int)Length);
+        Span<byte> dstData = new((void*)dest.handle, (int)encryptSize);
+        dstData.Clear();
+        srcData.CopyTo(dstData);
         _ = CryptMem.CryptProtectMemory(dest);
         try {
             return dest;
@@ -45,11 +51,9 @@ public class SafeMemoryHandle : SafeHandle {
         }
     }
     public uint GetEncryptSize() {
-        if (Length % CryptMem.CRYPTPROTECTMEMORY_BLOCK_SIZE != 0) {
-            return Length + (CryptMem.CRYPTPROTECTMEMORY_BLOCK_SIZE - (Length % CryptMem.CRYPTPROTECTMEMORY_BLOCK_SIZE));
-        } else {
-            return Length;
-        }
+        return Length % CryptMem.CRYPTPROTECTMEMORY_BLOCK_SIZE != 0
+            ? Length + (CryptMem.CRYPTPROTECTMEMORY_BLOCK_SIZE - (Length % CryptMem.CRYPTPROTECTMEMORY_BLOCK_SIZE))
+            : Length;
     }
     public unsafe void Read(Span<byte> destination) {
         if (destination.Length > Length) {
@@ -63,11 +67,15 @@ public class SafeMemoryHandle : SafeHandle {
         }
         source.CopyTo(new Span<byte>((void*)handle, source.Length));
     }
+    public unsafe void ZeroMem() {
+        Span<byte> span = new((void*)handle, (int)Length);
+        CryptographicOperations.ZeroMemory(span);
+    }
     protected override bool ReleaseHandle() {
         if (IsInvalid) {
             return false;
         }
-        _ = WriteMem.MemZero(this);
+        ZeroMem();
         switch (Type) {
             case MemoryType.None:
                 return false;
@@ -89,10 +97,15 @@ public class SafeMemoryHandle : SafeHandle {
     public static SafeMemoryHandle CreateCoTaskMem(uint length) => Create(MemoryType.CoTaskMem, length);
     public static SafeMemoryHandle CreateHGlobal(uint length) => Create(MemoryType.Heap, length);
 
-    public static SafeMemoryHandle MigrateHandle(ref SafeMemoryHandle consumedHandle, out SafeMemoryHandle resultHandle, MemoryType resultType) {
+    public static unsafe SafeMemoryHandle MigrateHandle(ref SafeMemoryHandle consumedHandle, out SafeMemoryHandle resultHandle, MemoryType resultType) {
         SafeMemoryHandle local = Interlocked.Exchange(ref consumedHandle!, null) ?? throw new ArgumentNullException(nameof(consumedHandle));
         try {
-            resultHandle = WriteMem.MemCopy(consumedHandle, consumedHandle.EncryptedLength, resultType);
+            uint len = consumedHandle.EncryptedLength;
+            resultHandle = Create(resultType, len);
+            Span<byte> srcData = new((void*)consumedHandle.handle, (int)len);
+            Span<byte> dstData = new((void*)resultHandle.handle, (int)len);
+            dstData.Clear();
+            srcData.CopyTo(dstData);
             return resultHandle;
         } finally {
             local.Dispose();
