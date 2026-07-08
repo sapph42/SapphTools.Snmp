@@ -7,12 +7,13 @@ using System.Formats.Asn1;
 using System.Net;
 using System.Net.Sockets;
 
-namespace SnmpSharpNet8.Messages; 
+namespace SnmpSharpNet8.Messages;
+
 public abstract class Request : ISnmpRequest {
     protected Socket _socket;
-    protected bool _socketDisposed = false;
+    protected bool _socketDisposed;
     protected IPEndPoint _peerEndPoint;
-    protected int _requestId = 0;
+    protected int _requestId;
     protected int _retries = 1;
 
 
@@ -20,7 +21,7 @@ public abstract class Request : ISnmpRequest {
     public abstract IRequestPdu Pdu { get; init; }
     public IPAddress Target { get; init; }
 
-    protected Request(IPAddress target, int port, int timeout, int retries) { 
+    protected Request(IPAddress target, int port, int timeout, int retries) {
         Target = target;
         _peerEndPoint = new(target, port);
         _socket = new(target.AddressFamily, SocketType.Dgram, ProtocolType.Udp);

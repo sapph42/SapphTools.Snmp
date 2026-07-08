@@ -1,9 +1,10 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
-namespace SnmpSharpNet8.Security; 
+namespace SnmpSharpNet8.Security;
+
 public class Privacy {
-    private readonly IPrivacyProtocol? cryptoInstance = null;
+    private readonly IPrivacyProtocol? cryptoInstance;
     public PrivacyProtocol Algorithm { get; private set; }
     public required Authentication Auth { get; init; }
     public int PrivacyParametersLength => cryptoInstance?.PrivacyParametersLength ?? 0;

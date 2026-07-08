@@ -8,7 +8,7 @@ namespace SnmpSharpNet8.Pdu;
 public class ScopedPdu : IConstructable {
     private readonly byte[] _raw;
     internal Asn1Tag Tag => new(UniversalTagNumber.OctetString);
-    internal int Length = 0;
+    internal int Length;
     public required OctetStringRaw ContextEngineId { get; init; }
     public required OctetStringRaw ContextName { get; init; }
     public ReadOnlySpan<byte> Raw {

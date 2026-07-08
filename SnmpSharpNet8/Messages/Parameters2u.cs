@@ -20,20 +20,24 @@ public readonly struct Parameters2u {
     public Parameters2u(byte model, byte qos, byte[] agentId, uint agentBoots, uint agentTime, ushort maxSize, byte[] userName, byte[] authDigest, byte[] contextSel) {
         Model = model;
         QoS = qos;
-        if (agentId.Length != 12)
+        if (agentId.Length != 12) {
             throw new ArgumentException("AgentId must be exactly 12 bytes long.");
+        }
         AgentId = agentId;
         AgentBoots = agentBoots;
         AgentTime = agentTime;
         MaxSize = maxSize;
-        if (userName.Length < 0 || userName.Length > 16)
+        if (userName.Length < 0 || userName.Length > 16) {
             throw new ArgumentException("UserName must be between 0 and 16 bytes long.");
+        }
         UserName = userName;
-        if (authDigest.Length > 255)
+        if (authDigest.Length > 255) {
             throw new ArgumentException("AuthDigest must be at most 255 bytes long.");
+        }
         AuthDigest = authDigest;
-        if (contextSel.Length > 40)
+        if (contextSel.Length > 40) {
             throw new ArgumentException("ContextSel must be at most 40 bytes long.");
+        }
         ContextSel = contextSel;
     }
     public readonly byte[] GetBytes() {

@@ -30,7 +30,7 @@ public class SnmpAuthenticationException(string msg) : SnmpException(msg) { }
 /// standard constructor
 /// </remarks>
 /// <param name="msg">exception message</param>
-public class SnmpDecodingException(string msg) : SnmpException(msg) {}
+public class SnmpDecodingException(string msg) : SnmpException(msg) { }
 /// <summary>
 /// Exception thrown when specific PDU type was expected and a different type was received.
 /// </summary>

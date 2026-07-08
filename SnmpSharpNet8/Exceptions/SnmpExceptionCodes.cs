@@ -13,7 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with SNMP#NET8.  If not, see <http://www.gnu.org/licenses/>.
 // 
-namespace SnmpSharpNet8.Exceptions; 
+namespace SnmpSharpNet8.Exceptions;
+
 public enum SnmpExceptionCodes {
     /// <summary>
     /// No error

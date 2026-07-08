@@ -1,6 +1,7 @@
 ﻿using SapphTools.Asn1.DataTypes;
 
-namespace SnmpSharpNet8.Messages; 
+namespace SnmpSharpNet8.Messages;
+
 public class UsmSecurityParameters : Sequence {
     public OctetStringRaw MsgAuthoritativeEngineID => (OctetStringRaw)Items[0];
     public Integer MsgAuthoritativeEngineBoots => (Integer)Items[1];
@@ -14,11 +15,11 @@ public class UsmSecurityParameters : Sequence {
         }
     }
     public UsmSecurityParameters(
-            OctetStringRaw engineId, 
-            Integer boots, 
-            Integer time, 
-            OctetStringRaw userName, 
-            OctetStringRaw authParams, 
+            OctetStringRaw engineId,
+            Integer boots,
+            Integer time,
+            OctetStringRaw userName,
+            OctetStringRaw authParams,
             OctetStringRaw privParams) : base([]) {
         AddChild(engineId);
         AddChild(boots);

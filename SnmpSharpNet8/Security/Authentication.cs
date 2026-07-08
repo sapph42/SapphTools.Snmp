@@ -44,8 +44,10 @@ public class Authentication {
         Span<byte> buf = stackalloc byte[64];
         int produced = 0;
         while (produced < 1048576) {
-            for (int i = 0; i < 64; i++)
+            for (int i = 0; i < 64; i++) {
                 buf[i] = password[(produced + i) % password.Length];
+            }
+
             inc.AppendData(buf);
             produced += 64;
         }
