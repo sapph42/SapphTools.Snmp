@@ -29,7 +29,7 @@ public class SnmpV3Request : Request {
     public override IRequestPdu Pdu { get; init; } = new SnmpPdu([], new Asn1Tag(UniversalTagNumber.Null), 0, 0, 0, []);
     public required ScopedPdu ScopedPdu { get; init; }
 
-    public int Timeout { get; set; } = 1000;
+    public int Timeout { get; set; } = 5000;
     internal SnmpV3Request(IPAddress ip, int port, int timeout, int retries, MsgFlags flags) : base(ip, port, timeout, retries) {
         Flags = flags;
         _ = Random.Shared.Next();

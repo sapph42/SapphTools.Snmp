@@ -12,7 +12,7 @@ public class PrivacyAES : IPrivacyProtocol {
     public virtual string Name => "AES";
     public int MaximumKeyLength => _keyBytes;
     public int MinimumKeyLength => _keyBytes;
-    public int PrivacyParametersLength => 8;
+    public static int PrivacyParametersLength => 8;
 
     public PrivacyAES(int keyBytes, Authentication auth) {
         if (keyBytes is not 16 and not 24 and not 32) {

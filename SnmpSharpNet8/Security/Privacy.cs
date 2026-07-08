@@ -4,22 +4,24 @@ using System.Diagnostics.CodeAnalysis;
 namespace SnmpSharpNet8.Security;
 
 public class Privacy {
-    private readonly IPrivacyProtocol? cryptoInstance;
     public PrivacyProtocol Algorithm { get; private set; }
     public required Authentication Auth { get; init; }
-    public int PrivacyParametersLength => cryptoInstance?.PrivacyParametersLength ?? 0;
+    public int PrivacyParametersLength { get; private set; }
     public Privacy(PrivacyProtocol algo) {
         if (algo == PrivacyProtocol.None) {
             throw new ArgumentException("PrivacyProtocol.None is not valid for object construction.", nameof(algo));
         }
         Algorithm = algo;
+        PrivacyParametersLength = algo switch {
+            PrivacyProtocol.AES128 => PrivacyAES.PrivacyParametersLength,
+            PrivacyProtocol.AES192 => PrivacyAES.PrivacyParametersLength,
+            PrivacyProtocol.AES256 => PrivacyAES.PrivacyParametersLength,
+            PrivacyProtocol.DES => PrivacyDES.PrivacyParametersLength,
+            _ => throw new UnreachableException()
+        };
     }
     [SetsRequiredMembers]
-    public Privacy(PrivacyProtocol algo, Authentication auth) {
-        if (algo == PrivacyProtocol.None) {
-            throw new ArgumentException("PrivacyProtocol.None is not valid for object construction.", nameof(algo));
-        }
-        Algorithm = algo;
+    public Privacy(PrivacyProtocol algo, Authentication auth) : this(algo) {
         Auth = auth;
     }
     public ReadOnlySpan<byte> Decrypt(
@@ -42,6 +44,7 @@ public class Privacy {
             PrivacyProtocol.AES192 => new PrivacyAES192(Auth),
             PrivacyProtocol.AES256 => new PrivacyAES256(Auth),
             PrivacyProtocol.DES => new PrivacyDES(Auth),
+            PrivacyProtocol.None => throw new NotImplementedException(),
             _ => throw new UnreachableException()
         };
     }

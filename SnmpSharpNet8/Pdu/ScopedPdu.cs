@@ -11,9 +11,7 @@ public class ScopedPdu : IConstructable {
     internal int Length;
     public required OctetStringRaw ContextEngineId { get; init; }
     public required OctetStringRaw ContextName { get; init; }
-    public ReadOnlySpan<byte> Raw {
-        get => _raw;
-    }
+    public ReadOnlySpan<byte> Raw => _raw;
     public required SnmpPdu InnerPdu { get; init; }
 
     [SetsRequiredMembers]

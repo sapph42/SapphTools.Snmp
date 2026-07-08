@@ -14,7 +14,7 @@ public class PrivacyDES : IPrivacyProtocol {
     public int MaximumKeyLength => 16;
     public int MinimumKeyLength => 16;
     public string Name => "DES";
-    public int PrivacyParametersLength => 8;
+    public static int PrivacyParametersLength => 8;
 
     public PrivacyDES(Authentication auth) {
         Auth = auth;

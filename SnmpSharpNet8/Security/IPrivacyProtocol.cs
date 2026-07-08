@@ -7,7 +7,7 @@ public interface IPrivacyProtocol {
     int MaximumKeyLength { get; }
     int MinimumKeyLength { get; }
     string Name { get; }
-    int PrivacyParametersLength { get; }
+    static int PrivacyParametersLength { get; }
 
     ReadOnlySpan<byte> Decrypt(ReadOnlySpan<byte> encryptedData, Span<byte> key, int engineBoots, int engineTime, Span<byte> privacyParameters);
     ReadOnlySpan<byte> Encrypt(ReadOnlySpan<byte> unencryptedData, Span<byte> key, int engineBoots, int engineTime, out byte[] privacyParameters);

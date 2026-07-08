@@ -36,7 +36,6 @@ public static class Parser {
                 ? (IAsn1Structure)ParseSnmpv3(span, pos, auth, priv, authCred, privCred)
                 : throw new NotSupportedException($"Only versions 2 and 3 are supported. Actual version parsed: {version}");
         }
-
     }
     private static SnmpPdu ParseSnmpv2(ReadOnlySpan<byte> body, int pos, out string community) {
         community = ReadOctetString(body, ref pos, "community");
@@ -191,5 +190,4 @@ public static class Parser {
 
         return new VarBinding(vbTlv, name, bound);
     }
-
 }
