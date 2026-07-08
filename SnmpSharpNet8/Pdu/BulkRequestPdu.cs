@@ -54,4 +54,5 @@ public sealed class BulkRequestPdu : Asn1Node, IRequestPdu {
             _ => $"PDU({t.TagValue})"
         }
         : $"PDU({t.TagClass}:{t.TagValue})";
+    static IRequestPdu IRequestPdu.Create(ReadOnlySpan<byte> raw, Asn1Tag tag) => throw new NotImplementedException();
 }

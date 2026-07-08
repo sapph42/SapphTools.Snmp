@@ -20,6 +20,9 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
         DataTypeRegistry.Register<SnmpPdu>();
         DataTypeRegistry.Register<SnmpPdu>(new(TagClass.ContextSpecific, 2, false));
         DataTypeRegistry.Register<SnmpPdu>(new(TagClass.ContextSpecific, 8, false));
+        DataTypeRegistry.RegisterPdu<SnmpPdu>();
+        DataTypeRegistry.RegisterPdu<SnmpPdu>(new(TagClass.ContextSpecific, 2, false));
+        DataTypeRegistry.RegisterPdu<SnmpPdu>(new(TagClass.ContextSpecific, 8, false));
     }
     public SnmpPdu(ReadOnlySpan<byte> raw, Asn1Tag pduType,
                long requestId, long errorStatus, long errorIndex,
@@ -78,7 +81,23 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
             ..payload
         ];
     }
-    public static SnmpPdu Create(ReadOnlySpan<byte> raw) => (SnmpPdu)Asn1.Parse(raw);
+    public static SnmpPdu Create(ReadOnlySpan<byte> raw) => (SnmpPdu)Create(raw, new(TagClass.ContextSpecific, 2, true));
+    public static IRequestPdu Create(ReadOnlySpan<byte> raw, Asn1Tag tag) {
+        List<IAsn1Node> children = Asn1.ParseChildren(raw, true);
+
+        if (children.Count < 4) {
+            throw new FormatException("PDU content too short");
+        }
+
+        Integer reqNode = children[0] as Integer ?? throw new FormatException("Missing requestId");
+        Integer errStatusNode = children[1] as Integer ?? throw new FormatException("Missing errorStatus");
+        Integer errIndexNode = children[2] as Integer ?? throw new FormatException("Missing errorIndex");
+        Sequence varBindSeq = children[3] as Sequence ?? throw new FormatException("Missing varBind sequence");
+
+        VarBinding[] varBindings = [.. varBindSeq.Items.Cast<VarBinding>()];
+
+        return new SnmpPdu(raw, tag, reqNode.Value, errStatusNode.Value, errIndexNode.Value, varBindings);
+    }
     public static SnmpPdu DiscoveryPdu(out long reqId) {
         return new(
             ConstructDiscoveryRequest(out reqId),

@@ -7,6 +7,7 @@ public class ReportPdu : SnmpPdu, IDataType, ICreateFromArg<ReportPdu>, ITagged<
     public static new Asn1Tag Tag => new(TagClass.ContextSpecific, 8, true);
     static ReportPdu() {
         DataTypeRegistry.Register<ReportPdu>();
+        DataTypeRegistry.RegisterPdu<ReportPdu>();
     }
     public ReportPdu(ReadOnlySpan<byte> raw,
             Asn1Tag pduType,
@@ -16,5 +17,5 @@ public class ReportPdu : SnmpPdu, IDataType, ICreateFromArg<ReportPdu>, ITagged<
             IReadOnlyList<VarBinding> varBindings
     ) : base(raw, pduType, requestId, errorStatus, errorIndex, varBindings) { }
 
-    public static new ReportPdu Create(ReadOnlySpan<byte> raw) => (ReportPdu)Asn1.Parse(raw);
+    public static new ReportPdu Create(ReadOnlySpan<byte> raw) => (ReportPdu)Create(raw, Tag);
 }
