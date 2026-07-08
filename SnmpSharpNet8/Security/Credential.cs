@@ -3,16 +3,21 @@ using SnmpSharpNet8.Memory;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
+using Windows.Win32.Security.Credentials;
 
 namespace SnmpSharpNet8.Security;
+
 public sealed class Credential : IDisposable {
-    private readonly SemaphoreSlim _gate = new(1,1);
+    private const int CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY = 0x00040000;
+
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     private bool _disposedValue;
     private SafeMemoryHandle _credHandle;
     private SafeMemoryHandle _keyHandle = SafeMemoryHandle.Zero;
-    private bool _isEncrypted = false;
+    private bool _isEncrypted;
+
+    private static readonly CREDUIWIN_FLAGS BASIC = (CREDUIWIN_FLAGS)((int)CREDUIWIN_FLAGS.CREDUIWIN_GENERIC | CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY);
 
     public CredentialType Type { get; private set; }
 
@@ -27,8 +32,9 @@ public sealed class Credential : IDisposable {
         private bool disposedValue;
 
         private void EnsureValid() {
-            if (!_valid)
+            if (!_valid) {
                 throw new ObjectDisposedException(nameof(CredProxy), "Credential is no longer usable.");
+            }
         }
         public void Invalidate() => _valid = false;
 
@@ -46,8 +52,7 @@ public sealed class Credential : IDisposable {
             CredApi.CredentialPack cred = CredApi.UnpackAuthBuffer(_credHandle, false);
             if (!withDomain) {
                 return cred.UserName.ToString();
-            }
-            if (cred.UserName.ToString().Contains('\\')) {
+            } else if (cred.UserName.ToString().Contains('\\')) {
                 return cred.UserName.ToString();
             } else {
                 return string.Concat(cred.Domain.ToString(), @"\", cred.UserName.ToString());
@@ -76,7 +81,7 @@ public sealed class Credential : IDisposable {
     public Credential(IntPtr? callerHandle, string promptText, string? userName = null) {
         try {
             using SafeMemoryHandle prePack = CredApi.PackCredential(userName);
-            _credHandle = CredApi.WindowsCredentialsPrompt(promptText, callerHandle, prePack, CredApi.PromptFlags.BASIC);
+            _credHandle = CredApi.WindowsCredentialsPrompt(promptText, callerHandle, prePack, BASIC);
             EncryptCred();
             _isEncrypted = true;
             Type = CredentialType.User;
@@ -127,7 +132,7 @@ public sealed class Credential : IDisposable {
         } finally {
             EncryptKey();
             _isEncrypted = true;
-            _gate.Release();
+            _ = _gate.Release();
         }
     }
     public ReadOnlySpan<byte> Decrypt(byte[] encryptedBytes, int engineBoots, int engineTime, Privacy algo, Span<byte> privParams) {
@@ -156,16 +161,16 @@ public sealed class Credential : IDisposable {
         } finally {
             EncryptKey();
             _isEncrypted = true;
-            _gate.Release();
+            _ = _gate.Release();
         }
     }
     public ReadOnlySpan<byte> Encrypt(
             ReadOnlySpan<byte> clearBytes,
-            ReadOnlySpan<byte> engineId, 
-            long engineBoots, 
-            long engineTime, 
-            Privacy privAlgo, 
-            Authentication authAlgo, 
+            ReadOnlySpan<byte> engineId,
+            long engineBoots,
+            long engineTime,
+            Privacy privAlgo,
+            Authentication authAlgo,
             out byte[] privParams) {
         if (_credHandle.IsInvalid) {
             privParams = [];
@@ -185,7 +190,7 @@ public sealed class Credential : IDisposable {
                 _keyHandle.Read(key);
                 Span<byte> cryptBytes = new byte[clearBytes.Length];
                 privAlgo.Encrypt(
-                    [..clearBytes],
+                    [.. clearBytes],
                     key,
                     (int)engineBoots,
                     (int)engineTime,
@@ -198,7 +203,7 @@ public sealed class Credential : IDisposable {
         } finally {
             EncryptKey();
             _isEncrypted = true;
-            _gate.Release();
+            _ = _gate.Release();
         }
     }
     public ReadOnlySpan<byte> GenerateHash(ReadOnlySpan<byte> wholeMessage, ReadOnlySpan<byte> engineId, Authentication algo) {
@@ -224,7 +229,7 @@ public sealed class Credential : IDisposable {
         } finally {
             EncryptKey();
             _isEncrypted = true;
-            _gate.Release();
+            _ = _gate.Release();
         }
     }
     private void StoreKey(Authentication algo, ReadOnlySpan<byte> engineId) {
@@ -247,7 +252,7 @@ public sealed class Credential : IDisposable {
                 Marshal.Copy(pass.DangerousGetHandle(), chars, 0, secretLen);
                 int byteCount = Encoding.ASCII.GetByteCount(chars);
                 secret = new byte[byteCount];
-                Encoding.ASCII.GetBytes(chars, secret);
+                _ = Encoding.ASCII.GetBytes(chars, secret);
                 key = algo.PasswordToKey(secret, engineId);
                 _keyHandle = SafeMemoryHandle.CreateCoTaskMem((uint)(key.Length + 1));
                 _keyHandle.Write(key);
@@ -260,43 +265,7 @@ public sealed class Credential : IDisposable {
             EncryptCred();
             EncryptKey();
             _isEncrypted = true;
-            _gate.Release();
-        }
-    }
-    private void StoreKey(IPrivacyProtocol algo, byte[] engineId) {
-        if (_credHandle.IsInvalid) {
-            return;
-        }
-        _gate.Wait();
-        try {
-            if (_isEncrypted) {
-                DecryptCred();
-            }
-            _isEncrypted = false;
-            using CredProxy proxy = new(_credHandle);
-            int secretLen = CredApi.GetPassLength(_credHandle);
-            char[] chars = new char[secretLen];
-            byte[] secret = [];
-            Span<byte> key = new byte[algo.MinimumKeyLength];
-            try {
-                using SafeMemoryHandle pass = proxy.GetPassword();
-                Marshal.Copy(pass.DangerousGetHandle(), chars, 0, secretLen);
-                int byteCount = Encoding.ASCII.GetByteCount(chars);
-                secret = new byte[byteCount];
-                Encoding.ASCII.GetBytes(chars, secret);
-                key = algo.PasswordToKey(secret, engineId);
-                _keyHandle = SafeMemoryHandle.CreateCoTaskMem((uint)(key.Length + 1));
-                _keyHandle.Write(key);
-            } finally {
-                CryptographicOperations.ZeroMemory(secret);
-                CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes<char>(chars));
-                CryptographicOperations.ZeroMemory(key);
-            }
-        } finally {
-            EncryptCred();
-            EncryptKey();
-            _isEncrypted = true;
-            _gate.Release();
+            _ = _gate.Release();
         }
     }
     public T? WithCredProxy<T>(Func<ICredBuffer, T> func) {
@@ -316,7 +285,7 @@ public sealed class Credential : IDisposable {
                 EncryptCred();
             }
             _isEncrypted = true;
-            _gate.Release();
+            _ = _gate.Release();
         }
     }
     public T? WithCredProxy<T, T2>(Func<ICredBuffer, T2[], T> func, params T2[] args) {
@@ -336,12 +305,10 @@ public sealed class Credential : IDisposable {
                 EncryptCred();
             }
             _isEncrypted = true;
-            _gate.Release();
+            _ = _gate.Release();
         }
     }
-    public bool ValidateCredential() {
-        return GetUserName() != null;
-    }
+    public bool ValidateCredential() => GetUserName() != null;
 
     private void DecryptCred() {
         if (_credHandle.IsInvalid || !_isEncrypted) {
