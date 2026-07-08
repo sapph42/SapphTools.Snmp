@@ -1,13 +1,18 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.37301.10 d17.14
+# Visual Studio Version 18
+VisualStudioVersion = 18.7.11925.98 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnmpSharpNet8", "SnmpSharpNet8\SnmpSharpNet8.csproj", "{CF36DEA6-99CD-4531-8DC9-BCD52F44317C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SapphTools.Asn1", "..\SapphTools.Asn1\SapphTools.Asn1\SapphTools.Asn1.csproj", "{05555B24-901F-455D-7B04-8FB3F55C7E81}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestProject1", "TestProject1\TestProject1.csproj", "{35039C6A-1FFA-4AE5-A8C9-DCA73EEB9172}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{E77B3365-B63A-4644-8851-74521C641349}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
