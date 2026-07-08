@@ -15,7 +15,7 @@ public class PrivacyAES : IPrivacyProtocol {
     public int PrivacyParametersLength => 8;
 
     public PrivacyAES(int keyBytes, Authentication auth) {
-        if (keyBytes != 16 && keyBytes != 24 && keyBytes != 32) {
+        if (keyBytes is not 16 and not 24 and not 32) {
             throw new ArgumentOutOfRangeException(nameof(keyBytes), "Valid key sizes are 16, 24 and 32 bytes.");
         }
 

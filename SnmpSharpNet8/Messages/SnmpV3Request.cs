@@ -1,5 +1,6 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
+using SnmpSharpNet8.Exceptions;
 using SnmpSharpNet8.Pdu;
 using SnmpSharpNet8.Security;
 using System.Formats.Asn1;
@@ -82,8 +83,9 @@ public class SnmpV3Request : Request {
                     continue;
                 }
                 _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
-            } catch {
+            } catch (Exception ex) {
                 resp = null;
+                throw new SnmpException("Error parsing SNMP response.", ex);
             }
         }
         return resp;

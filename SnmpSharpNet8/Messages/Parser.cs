@@ -154,7 +154,7 @@ public static class Parser {
         IDataType.GetLength(vbListRest, out int vbListLen, out int vbListStart);
         ReadOnlySpan<byte> vbList = vbListRest.Slice(vbListStart, vbListLen);
 
-        var bindings = new List<VarBinding>();
+        List<VarBinding> bindings = [];
         int vbPos = 0;
         while (vbPos < vbList.Length) {
             ReadOnlySpan<byte> vbRest = vbList[vbPos..];
@@ -185,7 +185,7 @@ public static class Parser {
         IDataType.GetLength(valRest, out int valLen, out int valStart);
         byte[] valPayload = [.. valRest.Slice(valStart, valLen)];
         Asn1Tag key = new(valTag.TagClass, valTag.TagValue, isConstructed: false);
-        IDataType bound = DataTypeRegistry.Factories.TryGetValue(key, out var factory)
+        IDataType bound = DataTypeRegistry.Factories.TryGetValue(key, out Func<byte[], IDataType>? factory)
             ? factory(valPayload)
             : new Unknown(valRest.Slice(valStart, valLen));
 

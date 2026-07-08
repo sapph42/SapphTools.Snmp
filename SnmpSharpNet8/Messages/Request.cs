@@ -91,11 +91,13 @@ public abstract class Request : ISnmpRequest, IDisposable {
         MsgFlags flags;
         Authentication? authProvider = null;
         Privacy? privacyProvider = null;
-        if (digest is null && privacy is null) {
+        digest ??= AuthenticationDigest.None;
+        privacy ??= PrivacyProtocol.None;
+        if (digest is AuthenticationDigest.None && privacy is PrivacyProtocol.None) {
             flags = MsgFlags.NoAuthNoPrivRep;
-        } else if (digest is null) {
+        } else if (digest is AuthenticationDigest.None) {
             throw new UnreachableException();
-        } else if (privacy is null) {
+        } else if (privacy is PrivacyProtocol.None) {
             flags = MsgFlags.AuthNoPrivRep;
             authProvider = new(digest.Value);
         } else {
@@ -103,8 +105,6 @@ public abstract class Request : ISnmpRequest, IDisposable {
             authProvider = new(digest.Value);
             privacyProvider = new(privacy.Value, authProvider);
         }
-        digest ??= AuthenticationDigest.None;
-        privacy ??= PrivacyProtocol.None;
         IPAddress ipAddress = IPAddress.Parse(ip);
         Credential? authCred = null;
         Credential? privCred = null;
