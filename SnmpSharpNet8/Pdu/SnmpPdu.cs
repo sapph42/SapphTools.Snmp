@@ -21,8 +21,8 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
         DataTypeRegistry.Register<SnmpPdu>(new(TagClass.ContextSpecific, 2, false));
         DataTypeRegistry.Register<SnmpPdu>(new(TagClass.ContextSpecific, 8, false));
         DataTypeRegistry.RegisterPdu<SnmpPdu>();
-        DataTypeRegistry.RegisterPdu<SnmpPdu>(new(TagClass.ContextSpecific, 2, false));
-        DataTypeRegistry.RegisterPdu<SnmpPdu>(new(TagClass.ContextSpecific, 8, false));
+        DataTypeRegistry.RegisterPdu<SnmpPdu>(new(TagClass.ContextSpecific, 2, true));
+        DataTypeRegistry.RegisterPdu<SnmpPdu>(new(TagClass.ContextSpecific, 8, true));
     }
     public SnmpPdu(ReadOnlySpan<byte> raw, Asn1Tag pduType,
                long requestId, long errorStatus, long errorIndex,
@@ -93,9 +93,37 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
         Integer errStatusNode = children[1] as Integer ?? throw new FormatException("Missing errorStatus");
         Integer errIndexNode = children[2] as Integer ?? throw new FormatException("Missing errorIndex");
         Sequence varBindSeq = children[3] as Sequence ?? throw new FormatException("Missing varBind sequence");
-
-        VarBinding[] varBindings = [.. varBindSeq.Items.Cast<VarBinding>()];
-
+        //////HERE IS THE FAILURE - VarBinding is a Sequence in spec and not in code and fails the cast!!!!!
+        ///Original: VarBinding[] varBindings = [.. varBindSeq.Items.Cast<VarBinding>()];
+        ///The following may or may not work.  Aggressive testing needed
+        ///Condsider refactoring VarBinding to derive from Sequence
+        List<VarBinding> varBindings = [];
+        if (varBindSeq.Items.All(i => i is Sequence)) {
+            foreach (Sequence seq in varBindSeq.Items.Cast<Sequence>()) {
+                if (seq.Items.Count != 2) {
+                    continue;
+                }
+                if (seq.Items[0] is not ObjectIdentifier oid) {
+                    continue;
+                }
+                if (seq.Items[1] is not IDataType dt) {
+                    continue;
+                }
+                VarBinding vb = new(seq.Raw, oid, dt);
+                varBindings.Add(vb);
+            }
+        } else {
+            for (int i = 0; i < varBindSeq.Items.Count; i += 2) {
+                if (varBindSeq.Items[i] is not ObjectIdentifier oid) {
+                    continue;
+                }
+                if (varBindSeq.Items[i + 1] is not IDataType dt) {
+                    continue;
+                }
+                VarBinding vb = new(oid.Value.Value, dt);
+                varBindings.Add(vb);
+            }
+        }
         return new SnmpPdu(raw, tag, reqNode.Value, errStatusNode.Value, errIndexNode.Value, varBindings);
     }
     public static SnmpPdu DiscoveryPdu(out long reqId) {
