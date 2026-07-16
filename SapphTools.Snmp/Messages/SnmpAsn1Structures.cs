@@ -1,9 +1,9 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
-using SnmpSharpNet8.Pdu;
+using SapphTools.Snmp.Pdu;
 using System.Formats.Asn1;
 
-namespace SnmpSharpNet8.Messages;
+namespace SapphTools.Snmp.Messages;
 
 public class SnmpV2Asn1Structure : IAsn1Structure {
     private byte[] bytes = [];

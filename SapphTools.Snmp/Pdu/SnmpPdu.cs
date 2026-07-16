@@ -1,8 +1,9 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
 using System.Formats.Asn1;
+using static SapphTools.Asn1.Asn1;
 
-namespace SnmpSharpNet8.Pdu;
+namespace SapphTools.Snmp.Pdu;
 
 public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>, ITagged<SnmpPdu> {
     public override IReadOnlyList<IAsn1Node>? Children => VarBindings;
@@ -83,7 +84,7 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
     }
     public static SnmpPdu Create(ReadOnlySpan<byte> raw) => (SnmpPdu)Create(raw, new(TagClass.ContextSpecific, 2, true));
     public static IRequestPdu Create(ReadOnlySpan<byte> raw, Asn1Tag tag) {
-        List<IAsn1Node> children = Asn1.ParseChildren(raw, true);
+        List<IAsn1Node> children = ParseChildren(raw, true);
 
         if (children.Count < 4) {
             throw new FormatException("PDU content too short");
@@ -93,10 +94,6 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
         Integer errStatusNode = children[1] as Integer ?? throw new FormatException("Missing errorStatus");
         Integer errIndexNode = children[2] as Integer ?? throw new FormatException("Missing errorIndex");
         Sequence varBindSeq = children[3] as Sequence ?? throw new FormatException("Missing varBind sequence");
-        //////HERE IS THE FAILURE - VarBinding is a Sequence in spec and not in code and fails the cast!!!!!
-        ///Original: VarBinding[] varBindings = [.. varBindSeq.Items.Cast<VarBinding>()];
-        ///The following may or may not work.  Aggressive testing needed
-        ///Condsider refactoring VarBinding to derive from Sequence
         List<VarBinding> varBindings = [];
         if (varBindSeq.Items.All(i => i is Sequence)) {
             foreach (Sequence seq in varBindSeq.Items.Cast<Sequence>()) {

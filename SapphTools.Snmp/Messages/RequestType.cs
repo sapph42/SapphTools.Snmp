@@ -1,4 +1,4 @@
-﻿namespace SnmpSharpNet8.Messages; 
+﻿namespace SapphTools.Snmp.Messages; 
 
 public enum V1RequestType {
     GetRequest     = 0,

@@ -2,7 +2,7 @@
 using SapphTools.Asn1.DataTypes;
 using System.Formats.Asn1;
 
-namespace SnmpSharpNet8.Pdu;
+namespace SapphTools.Snmp.Pdu;
 public class ReportPdu : SnmpPdu, IDataType, ICreateFromArg<ReportPdu>, ITagged<ReportPdu> {
     public static new Asn1Tag Tag => new(TagClass.ContextSpecific, 8, true);
     static ReportPdu() {

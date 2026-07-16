@@ -1,9 +1,8 @@
-﻿using SnmpSharpNet8.Exceptions;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
 
-namespace SnmpSharpNet8.Security;
+namespace SapphTools.Snmp.Security;
 
 public class PrivacyAES : IPrivacyProtocol {
     protected long _salt = Random.Shared.NextInt64();

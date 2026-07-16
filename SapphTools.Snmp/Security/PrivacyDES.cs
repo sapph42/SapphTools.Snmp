@@ -1,8 +1,7 @@
-using SnmpSharpNet8.Exceptions;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 
-namespace SnmpSharpNet8.Security;
+namespace SapphTools.Snmp.Security;
 
 #pragma warning disable CA5351 // Do Not Use Broken Cryptographic Algorithms
 public class PrivacyDES : IPrivacyProtocol {

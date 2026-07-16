@@ -1,11 +1,11 @@
-﻿using SnmpSharpNet8.Interop;
-using SnmpSharpNet8.Memory;
+﻿using SapphTools.Snmp.Interop;
+using SapphTools.Snmp.Memory;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Windows.Win32.Security.Credentials;
 
-namespace SnmpSharpNet8.Security;
+namespace SapphTools.Snmp.Security;
 
 public sealed class Credential : IDisposable {
     private const int CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY = 0x00040000;

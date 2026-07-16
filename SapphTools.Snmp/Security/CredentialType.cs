@@ -1,4 +1,4 @@
-﻿namespace SnmpSharpNet8.Security;
+﻿namespace SapphTools.Snmp.Security;
 
 public enum CredentialType {
     User,

@@ -1,6 +1,6 @@
 ﻿using SapphTools.Asn1.DataTypes;
 
-namespace SnmpSharpNet8.Messages;
+namespace SapphTools.Snmp.Messages;
 
 public interface ISnmpRequest {
     Integer Version { get; }

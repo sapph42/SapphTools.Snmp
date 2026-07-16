@@ -2,7 +2,7 @@
 using SapphTools.Asn1.DataTypes;
 using System.Net;
 
-namespace SnmpSharpNet8.Messages;
+namespace SapphTools.Snmp.Messages;
 
 public class SnmpV2cRequest : Request {
     public override Integer Version => new([0x1]);

@@ -1,7 +1,9 @@
-﻿using System.Diagnostics;
+﻿using SapphTools.Snmp;
+using SapphTools.Snmp.Security;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
-namespace SnmpSharpNet8.Security;
+namespace SapphTools.Snmp.Security;
 
 public class Privacy {
     public PrivacyProtocol Algorithm { get; private set; }

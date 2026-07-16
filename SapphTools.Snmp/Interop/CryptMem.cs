@@ -1,7 +1,7 @@
-﻿using SnmpSharpNet8.Memory;
+﻿using SapphTools.Snmp.Memory;
 using Windows.Win32;
 
-namespace SnmpSharpNet8.Interop;
+namespace SapphTools.Snmp.Interop;
 
 internal static unsafe partial class CryptMem {
     internal const uint CRYPTPROTECTMEMORY_SAME_PROCESS = 0;

@@ -3,7 +3,7 @@ using SapphTools.Asn1.DataTypes;
 using System.Diagnostics.CodeAnalysis;
 using System.Formats.Asn1;
 
-namespace SnmpSharpNet8.Pdu;
+namespace SapphTools.Snmp.Pdu;
 
 public class ScopedPdu : IConstructable {
     private readonly byte[] _raw;

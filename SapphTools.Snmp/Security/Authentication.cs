@@ -2,7 +2,7 @@
 using System.Net.Sockets;
 using System.Security.Cryptography;
 
-namespace SnmpSharpNet8.Security;
+namespace SapphTools.Snmp.Security;
 
 public class Authentication {
     private readonly HashAlgorithmName _hashName;

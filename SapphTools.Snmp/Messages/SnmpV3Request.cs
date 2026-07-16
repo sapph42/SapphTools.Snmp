@@ -1,14 +1,13 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
-using SnmpSharpNet8.Exceptions;
-using SnmpSharpNet8.Pdu;
-using SnmpSharpNet8.Security;
+using SapphTools.Snmp.Pdu;
+using SapphTools.Snmp.Security;
 using System.Diagnostics;
 using System.Formats.Asn1;
 using System.Net;
 using System.Net.Sockets;
 
-namespace SnmpSharpNet8.Messages;
+namespace SapphTools.Snmp.Messages;
 
 public class SnmpV3Request : Request {
     private bool _didDiscovery;

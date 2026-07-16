@@ -1,4 +1,4 @@
-﻿using SnmpSharpNet8.Memory;
+﻿using SapphTools.Snmp.Memory;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Windows.Win32;
@@ -6,7 +6,7 @@ using Windows.Win32.Foundation;
 using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.Security.Credentials;
 
-namespace SnmpSharpNet8.Interop;
+namespace SapphTools.Snmp.Interop;
 
 internal static unsafe partial class CredApi {
     public ref struct CredentialPack {

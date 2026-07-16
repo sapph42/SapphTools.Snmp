@@ -1,8 +1,8 @@
-﻿using SnmpSharpNet8.Interop;
+﻿using SapphTools.Snmp.Interop;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
-namespace SnmpSharpNet8.Memory;
+namespace SapphTools.Snmp.Memory;
 
 public class SafeMemoryHandle : SafeHandle {
     public enum MemoryType {

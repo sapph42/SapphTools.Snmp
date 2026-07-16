@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with SNMP#NET8.  If not, see <http://www.gnu.org/licenses/>.
 // 
-namespace SnmpSharpNet8;
+namespace SapphTools.Snmp;
 /// <summary>
 /// Enumeration of available authentication digests
 /// </summary>

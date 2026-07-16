@@ -1,4 +1,4 @@
-﻿namespace SnmpSharpNet8;
+﻿namespace SapphTools.Snmp;
 
 public enum PrivacyProtocol {
     None = 0,

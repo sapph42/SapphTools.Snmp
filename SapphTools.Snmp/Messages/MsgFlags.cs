@@ -1,4 +1,4 @@
-﻿namespace SnmpSharpNet8.Messages;
+﻿namespace SapphTools.Snmp.Messages;
 
 internal enum MsgFlags : byte {
     None            = 0x0,

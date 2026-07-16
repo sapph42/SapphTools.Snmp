@@ -1,4 +1,4 @@
-﻿namespace SnmpSharpNet8.Pdu;
+﻿namespace SapphTools.Snmp.Pdu;
 public enum SnmpContextTagNumber {
     GetRequest     = 0,
     GetNextRequest = 1,
