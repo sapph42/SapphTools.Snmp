@@ -13,6 +13,7 @@ public class ScopedPdu : IConstructable {
     public required OctetStringRaw ContextName { get; init; }
     public ReadOnlySpan<byte> Raw => _raw;
     public required SnmpPdu InnerPdu { get; init; }
+    public bool Encrypted { get; set; }
 
     [SetsRequiredMembers]
     internal ScopedPdu(OctetStringRaw contextEngineId, OctetStringRaw contextName, SnmpPdu requestPdu) {
@@ -30,13 +31,21 @@ public class ScopedPdu : IConstructable {
     }
     public ReadOnlySpan<byte> Construct() => ConstructRequest();
     public ReadOnlySpan<byte> ConstructRequest() {
-        Span<byte> tagValue = stackalloc byte[1];
-        _ = new Asn1Tag(UniversalTagNumber.OctetString).Encode(tagValue);
-        return (byte[])[
-            ..tagValue,
+        if (Encrypted) {
+            Span<byte> tagValue = stackalloc byte[1];
+            _ = new Asn1Tag(UniversalTagNumber.OctetString).Encode(tagValue);
+            return (byte[])[
+                ..tagValue,
             ..IDataType.EncodeLength(_raw.Length),
             .._raw
-        ];
+            ];
+        } else {
+            Sequence plain = new([]);
+            plain.AddChild(ContextEngineId);
+            plain.AddChild(ContextName);
+            plain.AddChild(InnerPdu);
+            return plain.Construct();
+        }
     }
     public static ScopedPdu DiscoveryScopedPdu(out long reqId) {
         return new ScopedPdu(
