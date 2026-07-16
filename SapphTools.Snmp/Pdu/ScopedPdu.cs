@@ -47,6 +47,15 @@ public class ScopedPdu : IConstructable {
             return plain.Construct();
         }
     }
+    
+    public static bool TryConvert(Sequence scopedPduSequence, [NotNullWhen(true)] out ScopedPdu? scopedPdu) {
+        if (scopedPduSequence.Items![0] is OctetStringRaw contextEngineId && scopedPduSequence.Items[1] is OctetStringRaw contextName && scopedPduSequence.Items[2] is SnmpPdu pdu) { 
+            scopedPdu = new(contextEngineId, contextName, pdu);
+            return true;
+        }
+        scopedPdu = null;
+        return false;
+    }
     public static ScopedPdu DiscoveryScopedPdu(out long reqId) {
         return new ScopedPdu(
             new([]),
