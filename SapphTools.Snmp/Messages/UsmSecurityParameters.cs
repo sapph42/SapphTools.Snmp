@@ -29,4 +29,15 @@ public class UsmSecurityParameters : Sequence {
         AddChild(authParams);
         AddChild(privParams);
     }
+    public int GetAuthParamsPos(int lengthCount) {
+        int pos = 0;
+        pos += 1; //Usm Sequence type byte
+        pos += lengthCount; //Usm Sequence length byte count
+        pos += MsgAuthoritativeEngineID.Construct().Length;
+        pos += MsgAuthoritativeEngineBoots.Construct().Length;
+        pos += MsgAuthoritativeEngineTime.Construct().Length;
+        pos += MsgUserName.Construct().Length;
+        pos += 2; //MsgAuthenticationParameters TLV T+L bytes
+        return pos;
+    }
 }
