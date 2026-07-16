@@ -27,7 +27,7 @@ public readonly struct Parameters2u {
         AgentBoots = agentBoots;
         AgentTime = agentTime;
         MaxSize = maxSize;
-        if (userName.Length < 0 || userName.Length > 16) {
+        if (userName.Length is < 0 or > 16) {
             throw new SnmpArgumentException(msg: "UserName must be between 0 and 16 bytes long.", paramName: nameof(userName));
         }
         UserName = userName;

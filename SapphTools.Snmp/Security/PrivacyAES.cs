@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
 
@@ -126,7 +126,7 @@ public class PrivacyAES : IPrivacyProtocol {
         shortKey.CopyTo(extKey);
         while (keyLen < MinimumKeyLength) {
             Span<byte> tmpBuf = Auth.PasswordToKey(lastKeyBuf, engineID);
-            if (tmpBuf.Length <= (MinimumKeyLength - keyLen)) {
+            if (tmpBuf.Length <= MinimumKeyLength - keyLen) {
                 tmpBuf.CopyTo(extKey[keyLen..]);
                 keyLen += tmpBuf.Length;
             } else {

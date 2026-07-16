@@ -83,9 +83,6 @@ public class Authentication {
     }
 
     public Span<byte> PasswordToKey(Span<byte> password, ReadOnlySpan<byte> engineId) {
-        Debug.WriteLine("");
-        Debug.WriteLine("");
-        Debug.WriteLine($"Secret To Key Convert       : {_hashName.Name}");
         using IncrementalHash inc = IncrementalHash.CreateHash(_hashName);
         Span<byte> buf = stackalloc byte[64];
         int produced = 0;
