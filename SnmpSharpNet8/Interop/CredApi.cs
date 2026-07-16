@@ -33,7 +33,7 @@ internal static unsafe partial class CredApi {
             uint authPackage = 0;
             BOOL save = false;
             Span<byte> inBuff = stackalloc byte[(int)prePack.Length];
-            prePack.Read(inBuff);
+            prePack.CopyTo(inBuff);
             ret = PInvoke.CredUIPromptForWindowsCredentials(
                 info,
                 0,
@@ -79,7 +79,7 @@ internal static unsafe partial class CredApi {
         }
 
         SafeMemoryHandle ret = SafeMemoryHandle.Create(SafeMemoryHandle.MemoryType.CoTaskMem, packSize);
-        ret.Write(packBuff);
+        ret.CopyFrom(packBuff);
         return ret;
     }
     public static int GetPassLength(SafeMemoryHandle authBuffer) {
@@ -88,7 +88,7 @@ internal static unsafe partial class CredApi {
         }
         uint userLength = 0;
         uint passLength = 0;
-        _ = PInvoke.CredUnPackAuthenticationBuffer(
+        int ret = PInvoke.CredUnPackAuthenticationBuffer(
             0,
             (void*)authBuffer.DangerousGetHandle(),
             authBuffer.Length,
@@ -107,8 +107,8 @@ internal static unsafe partial class CredApi {
         uint userLength = 0;
         uint domainLength = 0;
         uint passLength = 0;
-        ReadOnlySpan<byte> auth = new byte[authBuffer.Length];
-        authBuffer.Write(auth);
+        Span<byte> auth = new byte[authBuffer.Length];
+        authBuffer.CopyTo(auth);
         _ = PInvoke.CredUnPackAuthenticationBuffer(
             0,
             auth,
@@ -131,12 +131,13 @@ internal static unsafe partial class CredApi {
             pass,
             ref passLength
         );
+        CryptographicOperations.ZeroMemory(auth);
         SafeMemoryHandle password = SafeMemoryHandle.Zero;
         if (!includePassword) {
             CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(pass));
         } else {
             password = SafeMemoryHandle.CreateCoTaskMem((passLength + 1) * sizeof(char));
-            password.Write(MemoryMarshal.AsBytes(pass));
+            password.CopyFrom(MemoryMarshal.AsBytes(pass));
             CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(pass));
         }
         return new CredentialPack() {
