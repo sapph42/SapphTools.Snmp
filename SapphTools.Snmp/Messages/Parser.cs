@@ -24,8 +24,8 @@ public static class Parser {
         int pos = msgStart;
         long version = ReadInteger(span, ref pos, "version");
 
-        if (version == 2) {
-            SnmpPdu pdu = ParseSnmpv2(body, pos, out string community);
+        if (version == 1) {
+            SnmpPdu pdu = ParseSnmpv2(span, pos, out string community);
             return new SnmpV2Asn1Structure {
                 Raw = msgTlv,
                 Version = version,
@@ -35,7 +35,7 @@ public static class Parser {
         } else {
             return version == 3
                 ? (IAsn1Structure)ParseSnmpv3(span, pos, auth, priv, authCred, privCred)
-                : throw new NotSupportedException($"Only versions 2 and 3 are supported. Actual version parsed: {version}");
+                : throw new NotSupportedException($"Only versions 1 (v2c) and 3 (v3) are supported. Actual version parsed: {version}");
         }
     }
     private static SnmpPdu ParseSnmpv2(ReadOnlySpan<byte> body, int pos, out string community) {
@@ -44,8 +44,8 @@ public static class Parser {
         ReadOnlySpan<byte> pduRest = body[pos..];
         Asn1Tag pduTag = ReadTag(pduRest);
         if (pduTag.TagClass != TagClass.ContextSpecific || !pduTag.IsConstructed) {
-            throw new FormatException(
-                $"Expected context-constructed PDU tag, got {Describe(pduTag)} " +
+            throw new SnmpDecodingException(
+                msg: $"Expected context-constructed PDU tag, got {Describe(pduTag)} " +
                 $"({GetBlock(pduRest)})");
         }
 
@@ -56,6 +56,8 @@ public static class Parser {
         return ParsePdu(pduTlv, pduTag, pduBody);
     }
     private static SnmpV3Asn1Structure ParseSnmpv3(ReadOnlySpan<byte> body, int pos, Authentication? auth, Privacy? priv, Credential? authCred, Credential? privCred) {
+        Span<byte> authCheckBody = new byte[body.Length];
+        body.CopyTo(authCheckBody);
         Asn1Tag headerDataTag = ReadTag(body[pos..]);
         Expect(headerDataTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "msgGlobalData");
         IDataType.GetLength(body[pos..], out int headerDataLength, out int headerDataBodyIndex);
@@ -67,6 +69,8 @@ public static class Parser {
         Expect(paramEnvTag, TagClass.Universal, (int)UniversalTagNumber.OctetString, "msgSecurityParameters");
         IDataType.GetLength(body[pos..], out int paramEnvLength, out int paramEnvIndex);
         pos += paramEnvIndex;
+        int usmLengthCount = paramEnvIndex - 1;
+        int usmIndex = pos;
         OctetStringRaw paramEnv = new(body.Slice(pos, paramEnvLength));
         pos += paramEnvLength;
 
@@ -74,20 +78,30 @@ public static class Parser {
         Expect(secParamTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "UsmSecurityParameters");
         IDataType.GetLength(paramEnv.Raw, out int _, out int secParamIndex);
         UsmSecurityParameters secParams = new(paramEnv.Raw[secParamIndex..]);
+        ReadOnlySpan<byte> authParams = secParams.MsgAuthenticationParameters.Raw;
+        int authPos = usmIndex + secParams.GetAuthParamsPos(usmLengthCount);
+        if (!authCheckBody.Slice(authPos, authParams.Length).SequenceEqual(authParams)) {
+            throw new SnmpAuthenticationException(msg: "Calculated msgAuthenticatedParameters position failed");
+        }
+        authCheckBody.Slice(authPos, authParams.Length).Clear();
 
-        ScopedPdu? scopedPdu = null;
+        Sequence scopedPduSeq;
         OctetStringRaw? cryptEnv = null;
-        Asn1Tag cryptEnvTag = Asn1.ReadTag(body[pos..]);
-        if (priv is not null && privCred is not null && 
-                auth is not null && authCred is not null && 
-                cryptEnvTag.HasSameClassAndValue(new Asn1Tag(UniversalTagNumber.OctetString))) {
-            Expect(cryptEnvTag, TagClass.Universal, (int)UniversalTagNumber.OctetString, "Encrypted ScopedPDU Envelope");
+        ReadOnlySpan<byte> authMessage;
+        Asn1Tag scopedPduTag = ReadTag(body[pos..]);
+        if (auth is not null && authCred is not null) {
+            if (!authCred.Authenticate(authParams, authCheckBody, auth)) {
+                throw new SnmpPrivacyException(null, new AuthenticationTagMismatchException());
+            }
+        }
+        if (priv is not null && privCred is not null && scopedPduTag.HasSameClassAndValue(OctetStringRaw.Tag)) {
+            Expect(scopedPduTag, TagClass.Universal, (int)UniversalTagNumber.OctetString, "Encrypted ScopedPDU Envelope");
             IDataType.GetLength(body[pos..], out int cryptEnvLength, out int cryptEnvIndex);
             pos += cryptEnvIndex;
-            cryptEnv = new(body.Slice(pos, cryptEnvLength));
-
+            authMessage = body.Slice(pos, cryptEnvLength);
+            cryptEnv = new(authMessage);
             ReadOnlySpan<byte> decryptedBytes = privCred.Decrypt(
-                [.. cryptEnv.Raw],
+                [..authMessage],
                 (int)secParams.MsgAuthoritativeEngineBoots.Value,
                 (int)secParams.MsgAuthoritativeEngineTime.Value,
                 priv,
@@ -98,48 +112,23 @@ public static class Parser {
             Expect(scopedPduPayloadTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "scopedPdu");
             IDataType.GetLength(decryptedBytes[scopedPos..], out int scopedPduLength, out int scopedPduIndex);
             scopedPos += scopedPduIndex;
-            Sequence scopedPduSeq = new(decryptedBytes.Slice(scopedPos, scopedPduLength));
-            scopedPdu = scopedPduSeq.Items![0] is OctetStringRaw contextEngineId && scopedPduSeq.Items[1] is OctetStringRaw contextName && scopedPduSeq.Items[2] is SnmpPdu pdu
-                ? new(contextEngineId, contextName, pdu)
-                : throw new FormatException("Invalid ScopedPdu structure");
-            ReadOnlySpan<byte> authParams = secParams.MsgAuthenticationParameters.Raw;
-            secParams.MsgAuthenticationParameters.Raw = new byte[authParams.Length];
-            SnmpV3Asn1Structure unAuthed = new() {
-                MsgGlobalData = msgGlobalData,
-                MsgSecurityParametersEnvelope = paramEnv,
-                UsmSecurityParameters = secParams,
-                ScopedPduEnvelope = cryptEnv,
-                ScopedPdu = scopedPdu!
-            };
-            ReadOnlySpan<byte> unauthedBytes = unAuthed.Construct();
-            if (authCred.Authenticate(authParams, unauthedBytes, auth)) {
-                secParams.MsgAuthenticationParameters.Raw = authParams;
-                return new() {
-                    MsgGlobalData = msgGlobalData,
-                    MsgSecurityParametersEnvelope = paramEnv,
-                    UsmSecurityParameters = secParams,
-                    ScopedPduEnvelope = cryptEnv,
-                    ScopedPdu = scopedPdu!
-                };
-            } else {
-                throw new AuthenticationTagMismatchException();
-            }
+            scopedPduSeq = new(decryptedBytes.Slice(scopedPos, scopedPduLength));
         } else {
-            Asn1Tag scopedPduTag = Asn1.ReadTag(body[pos..]);
             Expect(scopedPduTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "scopedPdu");
             IDataType.GetLength(body[pos..], out int scopedPduLength, out int scopedPduIndex);
             pos += scopedPduIndex;
-            Sequence scopedPduSeq = new(body.Slice(pos, scopedPduLength));
-            if (scopedPduSeq.Items![0] is OctetStringRaw contextEngineId && scopedPduSeq.Items[1] is OctetStringRaw contextName && scopedPduSeq.Items[2] is SnmpPdu pdu) {
-                scopedPdu = new(contextEngineId, contextName, pdu);
-            }
+            authMessage = body.Slice(pos, scopedPduLength);
+            scopedPduSeq = new(authMessage);
+        }
+        if (!ScopedPdu.TryConvert(scopedPduSeq, out ScopedPdu? scopedPdu)) {
+            throw new SnmpDecodingException(msg: "Invalid ScopedPdu structure");
         }
         return new() {
             MsgGlobalData = msgGlobalData,
             MsgSecurityParametersEnvelope = paramEnv,
             UsmSecurityParameters = secParams,
             ScopedPduEnvelope = cryptEnv,
-            ScopedPdu = scopedPdu!
+            ScopedPdu = scopedPdu
         };
     }
 
