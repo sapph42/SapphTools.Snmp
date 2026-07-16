@@ -24,9 +24,10 @@ public abstract class Request : ISnmpRequest, IDisposable {
         Target = target;
         _peerEndPoint = new(target, port);
         _socket = new(target.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
-        IPEndPoint localEndPoint = new(IPAddress.Any, 0);
-        _socket.Bind(localEndPoint);
-        _socket.ReceiveTimeout = timeout;
+        _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+        _socket.ReceiveTimeout = timeout / 2;
+        _socket.SendTimeout = timeout / 2;
+        _socket.Connect(_peerEndPoint);
         _retries = retries;
     }
 
@@ -54,39 +55,53 @@ public abstract class Request : ISnmpRequest, IDisposable {
     public static SnmpV3Request CreateV3(
         string ip,
         string userName,
-        string contextEngineId = "",
+        string contextName = "",
         int port = 161,
         int timeout = 0,
         int retries = 0
-    ) => CreateV3Internal(ip, null, null, userName, contextEngineId, port, timeout, retries);
+    ) => CreateV3Internal(ip, null, null, userName, contextName, port, timeout, retries);
     public static SnmpV3Request CreateV3(
         string ip,
         AuthenticationDigest digest,
         string userName,
-        string contextEngineId = "",
+        string contextName = "",
         int port = 161,
         int timeout = 0,
         int retries = 0
-    ) => CreateV3Internal(ip, digest, null, userName, contextEngineId, port, timeout, retries);
+    ) => CreateV3Internal(ip, digest, null, userName, contextName, port, timeout, retries);
     public static SnmpV3Request CreateV3(
         string ip,
         AuthenticationDigest digest,
         PrivacyProtocol privacy,
         string userName,
-        string contextEngineId = "",
+        string contextName = "",
         int port = 161,
         int timeout = 0,
         int retries = 0
-    ) => CreateV3Internal(ip, digest, privacy, userName, contextEngineId, port, timeout, retries);
+    ) => CreateV3Internal(ip, digest, privacy, userName, contextName, port, timeout, retries);
+    public static SnmpV3Request CreateV3(
+        string ip,
+        AuthenticationDigest digest,
+        PrivacyProtocol privacy,
+        Credential authCred,
+        Credential privCred,
+        string userName,
+        string contextName = "",
+        int port = 161,
+        int timeout = 0,
+        int retries = 0
+    ) => CreateV3Internal(ip, digest, privacy, userName, contextName, port, timeout, retries, authCred, privCred);
     private static SnmpV3Request CreateV3Internal(
         string ip,
         AuthenticationDigest? digest,
         PrivacyProtocol? privacy,
         string userName,
-        string contextEngineId = "",
+        string contextName = "",
         int port = 161,
         int timeout = 0,
-        int retries = 0
+        int retries = 0,
+        Credential? authCred = null,
+        Credential? privCred = null
     ) {
         MsgFlags flags;
         Authentication? authProvider = null;
@@ -106,21 +121,19 @@ public abstract class Request : ISnmpRequest, IDisposable {
             privacyProvider = new(privacy.Value, authProvider);
         }
         IPAddress ipAddress = IPAddress.Parse(ip);
-        Credential? authCred = null;
-        Credential? privCred = null;
         if (digest != AuthenticationDigest.None) {
-            authCred = new(null, "Enter authSecret:", userName);
+            authCred ??= new(null, "Enter authSecret:", userName);
         }
         if (privacy != PrivacyProtocol.None) {
-            privCred = new(null, "Enter privSecret:", userName);
+            privCred ??= new(null, "Enter privSecret:", userName);
         }
         Asn1Tag requestTag = new(TagClass.ContextSpecific, 0, true);
         int requestId = Random.Shared.Next();
         List<VarBinding> vbs = [];
         SnmpPdu pdu = new([], requestTag, requestId, 0, 0, vbs);
         ScopedPdu sPdu = new(
-            new(contextEngineId),
             new(string.Empty),
+            new(contextName),
             pdu
         );
         return new(ipAddress, port, timeout, retries, flags) {
@@ -129,13 +142,15 @@ public abstract class Request : ISnmpRequest, IDisposable {
             PrivCred = privCred,
             _msgUserName = new(userName),
             AuthAlgo = authProvider,
-            PrivAlgo = privacyProvider
+            PrivAlgo = privacyProvider,
+            _contextName = new(contextName)
         };
     }
     public abstract ReadOnlySpan<byte> Construct(string[] oids, out long requestId);
 
     public void Dispose() {
-        _socket.Dispose();
+        _socket.Disconnect(false);
+        _socket?.Dispose();
         GC.SuppressFinalize(this);
     }
 }
