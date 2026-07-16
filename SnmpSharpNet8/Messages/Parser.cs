@@ -76,8 +76,10 @@ public static class Parser {
 
         ScopedPdu? scopedPdu = null;
         OctetStringRaw? cryptEnv = null;
-        if (priv is not null && privCred is not null && auth is not null && authCred is not null) {
-            Asn1Tag cryptEnvTag = Asn1.ReadTag(body[pos..]);
+        Asn1Tag cryptEnvTag = Asn1.ReadTag(body[pos..]);
+        if (priv is not null && privCred is not null && 
+                auth is not null && authCred is not null && 
+                cryptEnvTag.HasSameClassAndValue(new Asn1Tag(UniversalTagNumber.OctetString))) {
             Expect(cryptEnvTag, TagClass.Universal, (int)UniversalTagNumber.OctetString, "Encrypted ScopedPDU Envelope");
             IDataType.GetLength(body[pos..], out int cryptEnvLength, out int cryptEnvIndex);
             pos += cryptEnvIndex;
@@ -191,3 +193,10 @@ public static class Parser {
         return new VarBinding(vbTlv, name, bound);
     }
 }
+/*SAMPLE ERROR RESPONSE - USE TO BUILD ERROR HANDLING
+ * 
+ * 13:47:43:025	Discovery Package Sent: 30 42 02 01 03 30 11 02 04 03 C6 2C 7D 02 03 00 FF E3 04 01 04 02 01 03 04 10 30 0E 04 00 02 01 00 02 01 00 04 00 04 00 04 00 30 18 04 00 04 00 A0 12 02 08 3E 49 7F BD F4 EE ED 4F 02 01 00 02 01 00 30 00
+13:47:43:025	Discovery Package Recv: 30 64 02 01 03 30 10 02 04 03 C6 2C 7D 02 02 05 C0 04 01 00 02 01 03 04 1D 30 1B 04 0B 80 00 1F 88 03 BC 0F F3 F1 94 D6 02 01 16 02 03 36 42 0E 04 00 04 00 04 00 30 2E 04 0B 80 00 1F 88 03 BC 0F F3 F1 94 D6 04 00 A8 1D 02 01 00 02 01 00 02 01 00 30 12 30 10 06 0A 2B 06 01 06 03 0F 01 01 04 00 41 02 00 C7
+13:47:43:025	Request   Package Sent: 30 81 82 02 01 03 30 11 02 04 6D 0B 33 F7 02 03 00 FF E3 04 01 07 02 01 03 04 3B 30 39 04 0B 80 00 1F 88 03 BC 0F F3 F1 94 D6 02 01 16 02 03 36 42 0E 04 0A 45 69 73 65 6E 68 6F 77 65 72 04 0C 00 00 00 00 00 00 00 00 00 00 00 00 04 08 00 00 00 00 09 A9 EC 59 04 2D 99 99 FA D3 BD 00 A6 89 93 7D CC 4B E4 94 99 91 78 E4 17 0F 69 A9 93 F1 F6 34 9E 50 86 9C 6B A2 7D DA 80 40 95 91 5A 55 47 E0 7B 30 B2
+13:47:43:328	Request   Package Recv: 30 6D 02 01 03 30 10 02 04 6D 0B 33 F7 02 02 05 C0 04 01 00 02 01 03 04 27 30 25 04 0B 80 00 1F 88 03 BC 0F F3 F1 94 D6 02 01 16 02 03 36 42 0E 04 0A 45 69 73 65 6E 68 6F 77 65 72 04 00 04 00 30 2D 04 0B 80 00 1F 88 03 BC 0F F3 F1 94 D6 04 00 A8 1C 02 01 00 02 01 00 02 01 00 30 11 30 0F 06 0A 2B 06 01 06 03 0F 01 01 05 00 41 01 03
+*/
