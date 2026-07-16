@@ -55,13 +55,22 @@ public class SafeMemoryHandle : SafeHandle {
             ? Length + (CryptMem.CRYPTPROTECTMEMORY_BLOCK_SIZE - (Length % CryptMem.CRYPTPROTECTMEMORY_BLOCK_SIZE))
             : Length;
     }
-    public unsafe void Read(Span<byte> destination) {
-        if (destination.Length > Length) {
-            throw new ArgumentOutOfRangeException(nameof(destination), "Destination buffer is larger than the allocated memory length.");
+    public unsafe void CopyTo(Span<byte> destination) {
+        if (Length > destination.Length) {
+            throw new ArgumentOutOfRangeException(nameof(destination), "Destination buffer is smaller than the allocated memory length.");
         }
         new Span<byte>((void*)handle, (int)Length).CopyTo(destination);
     }
-    public unsafe void Write(ReadOnlySpan<byte> source) {
+    public unsafe void CopyTo(Span<byte> destination, int length) {
+        if (destination.Length > length) {
+            throw new ArgumentOutOfRangeException(nameof(destination), "Destination buffer is smaller than the allocated memory length slice.");
+        }
+        if (length > Length) {
+            throw new ArgumentOutOfRangeException(nameof(length), "Requested slice larger than the allocated memory length.");
+        }
+        new Span<byte>((void*)handle, length).CopyTo(destination);
+    }
+    public unsafe void CopyFrom(ReadOnlySpan<byte> source) {
         if (source.Length > Length) {
             throw new ArgumentOutOfRangeException(nameof(source), "Source buffer is larger than the allocated memory length.");
         }
@@ -115,6 +124,6 @@ public class SafeMemoryHandle : SafeHandle {
         unsafe {
             CryptographicOperations.ZeroMemory(new Span<byte>((void*)handle, (int)Length));
         }
-        ReleaseHandle();
+        _ = ReleaseHandle();
     }
 }
