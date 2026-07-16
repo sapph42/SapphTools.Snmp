@@ -83,9 +83,12 @@ public sealed class Credential : IDisposable {
         try {
             using SafeMemoryHandle prePack = CredApi.PackCredential(userName);
             _credHandle = CredApi.WindowsCredentialsPrompt(promptText, callerHandle, prePack, BASIC);
+#if UNSAFEVERBOSE
             Span<byte> cred = stackalloc byte[(int)_credHandle.Length];
             _credHandle.CopyTo(cred);
             Debug.WriteLine($"Cred Buffer [{cred.Length:D3}]: {string.Join(' ', cred.ToArray().Select(b => Convert.ToHexString([b])))}");
+            CryptographicOperations.ZeroMemory(cred);
+#endif
             EncryptCred();
             _isEncrypted = true;
             Type = CredentialType.User;
@@ -103,9 +106,12 @@ public sealed class Credential : IDisposable {
         } else {
             _ = SafeMemoryHandle.MigrateHandle(ref handle, out _credHandle, SafeMemoryHandle.MemoryType.CoTaskMem);
         }
-        //Span<byte> cred = stackalloc byte[(int)_credHandle.Length];
-        //_credHandle.CopyTo(cred);
-        //Debug.WriteLine($"Input Cred Buffer          [{cred.Length:D3}]: {string.Join(' ', cred.ToArray().Select(b => Convert.ToHexString([b])))}");
+#if UNSAFEVERBOSE
+        Span<byte> cred = stackalloc byte[(int)_credHandle.Length];
+        _credHandle.CopyTo(cred);
+        Debug.WriteLine($"Input Cred Buffer          [{cred.Length:D3}]: {string.Join(' ', cred.ToArray().Select(b => Convert.ToHexString([b])))}");
+        CryptographicOperations.ZeroMemory(cred);
+#endif
         EncryptCred();
         _isEncrypted = true;
     }
@@ -266,13 +272,21 @@ public sealed class Credential : IDisposable {
                     }
                     chars[i] = (char)secret[i * 2];
                 }
+#if UNSAFEVERBOSE
+                Debug.WriteLine("");
+                Debug.WriteLine("");
+                Debug.WriteLine("Key Generation Requested");
+                Debug.WriteLine($"Secret Raw Bytes       [{secret.Length:D3}]: {string.Join(' ', secret.ToArray().Select(b => Convert.ToHexString([b])))}");
                 Debug.WriteLine($"Secret Chars (**term)  [{chars.Length:D3}]: {string.Join("", chars)}**");
+#endif
                 CryptographicOperations.ZeroMemory(secret);
                 secret = new byte[secretLen - 1];
                 for (int i = 0; i < chars.Length; i++) {
                     secret[i] = (byte)chars[i];
                 }
+#if UNSAFEVERBOSE
                 Debug.WriteLine($"Secret ASCII Bytes     [{secret.Length:D3}]: {string.Join(' ', secret.ToArray().Select(b => Convert.ToHexString([b])))}");
+#endif
                 key = keygen(secret, engineId);
                 _keyHandle = SafeMemoryHandle.CreateCoTaskMem((uint)key.Length);
                 _keyHandle.CopyFrom(key);

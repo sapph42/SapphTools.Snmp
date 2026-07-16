@@ -75,6 +75,10 @@ public class PrivacyAES : IPrivacyProtocol {
         if (key.Length < _keyBytes) {
             throw new ArgumentOutOfRangeException(nameof(key), "Invalid key length");
         }
+        Span<byte> iv = stackalloc byte[16];
+        byte[] pkey = [..key[..MaximumKeyLength]];
+        long salt = NextSalt();
+#if UNSAFEVERBOSE
         Debug.WriteLine("");
         Debug.WriteLine("");
         Debug.WriteLine( "Encrypt Requested           : AES128");
@@ -82,18 +86,14 @@ public class PrivacyAES : IPrivacyProtocol {
         Debug.WriteLine($"Priv Key               [{key.Length:D3}]: {string.Join(' ', key.ToArray().Select(b => Convert.ToHexString([b])))}");
         Debug.WriteLine($"Engine Boots                : {engineBoots}");
         Debug.WriteLine($"Engine Time                 : {engineTime}");
-        Span<byte> iv = stackalloc byte[16];
-        byte[] pkey = [..key[..MaximumKeyLength]];
         Debug.WriteLine($"Truncated Priv Key     [{pkey.Length:D3}]: {string.Join(' ', pkey.Select(b => Convert.ToHexString([b])))}");
-        long salt = NextSalt();
         Debug.WriteLine($"Salt                        : {salt}");
+#endif
         privacyParameters = new byte[8];
         BinaryPrimitives.WriteInt32BigEndian(iv[..4], engineBoots);
         BinaryPrimitives.WriteInt32BigEndian(iv[4..8], engineTime);
         BinaryPrimitives.WriteInt64BigEndian(privacyParameters.AsSpan(0, 8), salt);
         privacyParameters[..8].CopyTo(iv[8..16]);
-        Debug.WriteLine($"IV                     [{iv.Length:D3}]: {string.Join(' ', iv.ToArray().Select(b => Convert.ToHexString([b])))}");
-        Debug.WriteLine($"privacyParameters      [{privacyParameters.Length:D3}]: {string.Join(' ', privacyParameters.Select(b => Convert.ToHexString([b])))}");
         int paddedLength = checked((unencryptedData.Length + 15) / 16 * 16);
         Span<byte> encryptedData = new byte[paddedLength];
         try {
@@ -105,7 +105,11 @@ public class PrivacyAES : IPrivacyProtocol {
                 encryptedData,
                 PaddingMode.Zeros,
                 feedbackSizeInBits: 128);
+#if UNSAFEVERBOSE
+            Debug.WriteLine($"IV                     [{iv.Length:D3}]: {string.Join(' ', iv.ToArray().Select(b => Convert.ToHexString([b])))}");
+            Debug.WriteLine($"privacyParameters      [{privacyParameters.Length:D3}]: {string.Join(' ', privacyParameters.Select(b => Convert.ToHexString([b])))}");
             Debug.WriteLine($"Encrypted Message      [{unencryptedData.Length:D3}]: {string.Join(' ', encryptedData[..unencryptedData.Length].ToArray().Select(b => Convert.ToHexString([b])))}");
+#endif
             return encryptedData[..unencryptedData.Length];
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was encrypting data.", ex);

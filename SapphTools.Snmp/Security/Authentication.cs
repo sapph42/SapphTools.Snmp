@@ -25,22 +25,26 @@ public class Authentication {
         keyLength = IncrementalHash.CreateHash(_hashName).HashLengthInBytes;
     }
     public ReadOnlySpan<byte> Authenticate(Span<byte> key, ReadOnlySpan<byte> wholeMessage) {
+        key = key[..keyLength];
+#if UNSAFEVERBOSE
         Debug.WriteLine("");
         Debug.WriteLine("");
         Debug.WriteLine($"Hash Requested              : {_hashName.Name}");
-        key = key[..keyLength];
         Debug.WriteLine($"Pre-Hash Auth Message  [{wholeMessage.Length:D3}]: {
             string.Join(' ', wholeMessage.ToArray().Select(b => Convert.ToHexString([b])))
             }");
         Debug.WriteLine($"Auth Key               [{key.Length:D3}]: {
             string.Join(' ', key.ToArray().Select(b => Convert.ToHexString([b])))
             }");
+#endif
         using IncrementalHash hmac = IncrementalHash.CreateHMAC(_hashName, key);
         hmac.AppendData(wholeMessage);
         ReadOnlySpan<byte> full = hmac.GetHashAndReset();
+#if UNSAFEVERBOSE
         Debug.WriteLine($"{AuthHeaderLength} Char Calc'ed HMAC    [{AuthHeaderLength}]: {
             string.Join(' ', full[..AuthHeaderLength].ToArray().Select(b => Convert.ToHexString([b])))
             }");
+#endif
         return full[..AuthHeaderLength];
     }
 
@@ -48,13 +52,34 @@ public class Authentication {
             Span<byte> key,
             ReadOnlySpan<byte> authenticationParameters,   // the digest extracted from the received message
             ReadOnlySpan<byte> wholeMessage) {              // MUST already have the auth field zeroed
+        key = key[..keyLength];
+#if UNSAFEVERBOSE
+        Debug.WriteLine("");
+        Debug.WriteLine("");
+        Debug.WriteLine($"Auth Requested              : {_hashName.Name}");
+        Debug.WriteLine($"Message To Verify Hash [{wholeMessage.Length:D3}]: {
+            string.Join(' ', wholeMessage.ToArray().Select(b => Convert.ToHexString([b])))
+            }");
+        Debug.WriteLine($"Auth Key               [{key.Length:D3}]: {
+            string.Join(' ', key.ToArray().Select(b => Convert.ToHexString([b])))
+            }");
+#endif
         using IncrementalHash hmac = IncrementalHash.CreateHMAC(_hashName, key);
         hmac.AppendData(wholeMessage);
         ReadOnlySpan<byte> computed = hmac.GetHashAndReset();
-
-        return CryptographicOperations.FixedTimeEquals(
+        bool match = CryptographicOperations.FixedTimeEquals(
             computed[..AuthHeaderLength],
             authenticationParameters[..AuthHeaderLength]);
+#if UNSAFEVERBOSE
+        Debug.WriteLine($"{AuthHeaderLength} Char Calc'ed HMAC    [{AuthHeaderLength}]: {
+            string.Join(' ', computed[..AuthHeaderLength].ToArray().Select(b => Convert.ToHexString([b])))
+            }");
+        Debug.WriteLine($"{authenticationParameters.Length} Char Given HMAC      [{AuthHeaderLength}]: {
+            string.Join(' ', authenticationParameters[..AuthHeaderLength].ToArray().Select(b => Convert.ToHexString([b])))
+            }");
+        Debug.WriteLine($"HMAC Match                  : {match}");
+#endif
+        return match;
     }
 
     public Span<byte> PasswordToKey(Span<byte> password, ReadOnlySpan<byte> engineId) {
@@ -72,7 +97,12 @@ public class Authentication {
             produced += 64;
         }
         byte[] ku = inc.GetHashAndReset();
+#if UNSAFEVERBOSE
+        Debug.WriteLine("");
+        Debug.WriteLine("");
+        Debug.WriteLine($"Secret To Key Convert       : {_hashName.Name}");
         Debug.WriteLine($"KU                     [{ku.Length:D3}]: {string.Join(' ', ku.Select(b => Convert.ToHexString([b])))}");
+#endif
         inc.AppendData(ku);
         inc.AppendData(engineId);
         inc.AppendData(ku);
