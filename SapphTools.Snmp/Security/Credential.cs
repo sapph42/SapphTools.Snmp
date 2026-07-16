@@ -7,7 +7,7 @@ using Windows.Win32.Security.Credentials;
 
 namespace SapphTools.Snmp.Security;
 
-public sealed class Credential : IDisposable {
+public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable<SafeMemoryHandle> {
     private const int CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY = 0x00040000;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -117,11 +117,12 @@ public sealed class Credential : IDisposable {
     }
     public Credential(string userName, CredentialType type) {
         Type = type;
-        _credHandle = type switch {
+        using SafeMemoryHandle prePack = type switch {
             CredentialType.SecretOnly => CredApi.PackCredential("N/A"),
             CredentialType.User => CredApi.PackCredential(userName),
             _ => SafeMemoryHandle.Zero
         };
+        _credHandle = CredApi.WindowsCredentialsPrompt(string.Empty, null, prePack, BASIC);
         EncryptCred();
         _isEncrypted = true;
     }
@@ -135,9 +136,9 @@ public sealed class Credential : IDisposable {
                 DecryptKey();
                 _isEncrypted = false;
             }
-            byte[] key = new byte[_keyHandle.Length];
+            Span<byte> key = new byte[_keyHandle.Length];
             try {
-                Marshal.Copy(_keyHandle.DangerousGetHandle(), key, 0, key.Length);
+                _keyHandle.CopyTo(key);
                 return algo.AuthenticateIncomingMsg(key, authenticationParameters, wholeMessage);
             } finally {
                 CryptographicOperations.ZeroMemory(key);
@@ -261,11 +262,7 @@ public sealed class Credential : IDisposable {
             Span<byte> key = [];
             try {
                 SafeMemoryHandle pass = proxy.GetPassword();
-                Debug.WriteLine("");
-                Debug.WriteLine("");
-                Debug.WriteLine("Key Generation Requested");
                 pass.CopyTo(secret, secretLenW);
-                Debug.WriteLine($"Secret Raw Bytes       [{secret.Length:D3}]: {string.Join(' ', secret.ToArray().Select(b => Convert.ToHexString([b])))}");
                 for (int i = 0; i < chars.Length; i++) {
                     if (secret[i * 2] == 0) {
                         continue;
@@ -366,4 +363,8 @@ public sealed class Credential : IDisposable {
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
+    public bool Equals(Credential? other) => _credHandle.Equals(other?._credHandle);
+    public bool Equals(SafeMemoryHandle? other) => _credHandle.Equals(other);
+    public override bool Equals(object? obj) => Equals(obj as Credential);
+    public override int GetHashCode() => _credHandle.GetHashCode();
 }
