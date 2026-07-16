@@ -1,5 +1,6 @@
 ﻿using SnmpSharpNet8.Exceptions;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace SnmpSharpNet8.Security;
@@ -35,29 +36,34 @@ public class PrivacyAES : IPrivacyProtocol {
         if (key.Length < MinimumKeyLength) {
             throw new ArgumentOutOfRangeException(nameof(key), "Invalid key length");
         }
-
+        if (encryptedData.IsEmpty) {
+            return [];
+        }
+        int cypherOriginalLength = encryptedData.Length;
+        int paddedLength = checked((cypherOriginalLength + 15) / 16 * 16);
+        Span<byte> paddedCypher = stackalloc byte[paddedLength];
+        encryptedData.CopyTo(paddedCypher);
         Span<byte> iv = stackalloc byte[16];
-        byte[] pkey = [.. key];
-        long salt = NextSalt();
-        privacyParameters = new byte[8];
+        byte[] pkey = [..key[..MaximumKeyLength]];
         BinaryPrimitives.WriteInt32BigEndian(iv[..4], engineBoots);
         BinaryPrimitives.WriteInt32BigEndian(iv[4..8], engineTime);
         privacyParameters[..8].CopyTo(iv[8..16]);
-        Span<byte> unencryptedData = new byte[encryptedData.Length];
+        Span<byte> unencryptedData = new byte[paddedLength];
         try {
             using Aes aes = Aes.Create();
             aes.Key = pkey;
             _ = aes.DecryptCfb(
-                encryptedData,
+                paddedCypher,
                 iv,
                 unencryptedData,
                 PaddingMode.None,
                 feedbackSizeInBits: 128);
-            return unencryptedData;
+            return unencryptedData[..cypherOriginalLength];
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was decrypting data.", ex);
         } finally {
             CryptographicOperations.ZeroMemory(iv);
+            CryptographicOperations.ZeroMemory(paddedCypher);
         }
     }
     public ReadOnlySpan<byte> Encrypt(
@@ -70,16 +76,27 @@ public class PrivacyAES : IPrivacyProtocol {
         if (key.Length < _keyBytes) {
             throw new ArgumentOutOfRangeException(nameof(key), "Invalid key length");
         }
-
+        Debug.WriteLine("");
+        Debug.WriteLine("");
+        Debug.WriteLine( "Encrypt Requested           : AES128");
+        Debug.WriteLine($"Plaintext Message      [{unencryptedData.Length:D3}]: {string.Join(' ', unencryptedData.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"Priv Key               [{key.Length:D3}]: {string.Join(' ', key.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"Engine Boots                : {engineBoots}");
+        Debug.WriteLine($"Engine Time                 : {engineTime}");
         Span<byte> iv = stackalloc byte[16];
-        byte[] pkey = [.. key];
+        byte[] pkey = [..key[..MaximumKeyLength]];
+        Debug.WriteLine($"Truncated Priv Key     [{pkey.Length:D3}]: {string.Join(' ', pkey.Select(b => Convert.ToHexString([b])))}");
         long salt = NextSalt();
+        Debug.WriteLine($"Salt                        : {salt}");
         privacyParameters = new byte[8];
         BinaryPrimitives.WriteInt32BigEndian(iv[..4], engineBoots);
         BinaryPrimitives.WriteInt32BigEndian(iv[4..8], engineTime);
         BinaryPrimitives.WriteInt64BigEndian(privacyParameters.AsSpan(0, 8), salt);
         privacyParameters[..8].CopyTo(iv[8..16]);
-        Span<byte> encryptedData = new byte[unencryptedData.Length];
+        Debug.WriteLine($"IV                     [{iv.Length:D3}]: {string.Join(' ', iv.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"privacyParameters      [{privacyParameters.Length:D3}]: {string.Join(' ', privacyParameters.Select(b => Convert.ToHexString([b])))}");
+        int paddedLength = checked((unencryptedData.Length + 15) / 16 * 16);
+        Span<byte> encryptedData = new byte[paddedLength];
         try {
             using Aes aes = Aes.Create();
             aes.Key = pkey;
@@ -87,9 +104,10 @@ public class PrivacyAES : IPrivacyProtocol {
                 unencryptedData,
                 iv,
                 encryptedData,
-                PaddingMode.None,
+                PaddingMode.Zeros,
                 feedbackSizeInBits: 128);
-            return encryptedData;
+            Debug.WriteLine($"Encrypted Message      [{unencryptedData.Length:D3}]: {string.Join(' ', encryptedData[..unencryptedData.Length].ToArray().Select(b => Convert.ToHexString([b])))}");
+            return encryptedData[..unencryptedData.Length];
         } catch (Exception ex) {
             throw new SnmpPrivacyException("Exception was thrown while AES privacy protocol was encrypting data.", ex);
         } finally {
