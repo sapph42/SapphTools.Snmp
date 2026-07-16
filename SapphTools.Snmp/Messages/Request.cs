@@ -1,10 +1,8 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
-using SapphTools.Snmp.Exceptions;
 using SapphTools.Snmp.Memory;
 using SapphTools.Snmp.Pdu;
 using SapphTools.Snmp.Security;
-using System.Diagnostics;
 using System.Formats.Asn1;
 using System.Net;
 using System.Net.Sockets;

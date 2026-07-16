@@ -24,7 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\SapphTools.Asn1\SapphTools.Asn1\SapphTools.Asn1.csproj" />
-    <ProjectReference Include="..\SnmpSharpNet8\SnmpSharpNet8.csproj" />
+    <ProjectReference Include="..\SapphTools.Snmp\SapphTools.Snmp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
