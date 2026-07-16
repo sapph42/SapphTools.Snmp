@@ -17,8 +17,8 @@ public abstract class Request : ISnmpRequest, IDisposable {
     protected int _retries = 1;
 
     public abstract Integer Version { get; }
-    public abstract IRequestPdu Pdu { get; init; }
     public IPAddress Target { get; init; }
+    public int Timeout { get; set; } = 5000;
 
     protected Request(IPAddress target, int port, int timeout, int retries) {
         Target = target;
@@ -31,25 +31,19 @@ public abstract class Request : ISnmpRequest, IDisposable {
         _retries = retries;
     }
 
-    public static SnmpV2cRequest CreateV2(string ip, string community, string[] oids, int port = 161, int timeout = 0, int retries = 0)
-        => CreateV2c(ip, community, oids, port, timeout, retries);
+    public static SnmpV2cRequest CreateV2(string ip, string community, int port = 161, int timeout = 0, int retries = 0)
+        => CreateV2c(ip, community, port, timeout, retries);
 
-    public static SnmpV2cRequest CreateV2c(string ip, string community, string[] oids, int port = 161, int timeout = 0, int retries = 0) {
+    public static SnmpV2cRequest CreateV2c(string ip, string community, int port = 161, int timeout = 0, int retries = 0) {
         IPAddress ipAddress = IPAddress.Parse(ip);
         OctetStringRaw communityOS = new(community);
         Asn1Tag requestTag = new(TagClass.ContextSpecific, 0);
         int requestId = new Random((int)DateTime.Now.Ticks).Next();
         List<VarBinding> vbs = [];
         Asn1Null nullVal = new();
-        foreach (string oid in oids) {
-            ObjectIdentifier oidNode = new(new OidStruct(oid));
-            VarBinding vb = new([], oidNode, nullVal);
-            vbs.Add(vb);
-        }
         SnmpPdu pdu = new([], requestTag, requestId, 0, 0, vbs);
         return new(ipAddress, port, timeout, retries) {
-            Community = communityOS,
-            Pdu = pdu,
+            Community = communityOS
         };
     }
     public static SnmpV3Request CreateV3(
@@ -108,6 +102,18 @@ public abstract class Request : ISnmpRequest, IDisposable {
         Privacy? privacyProvider = null;
         digest ??= AuthenticationDigest.None;
         privacy ??= PrivacyProtocol.None;
+        if (digest != AuthenticationDigest.None) {
+            authCred ??= new(null, "Enter authSecret:", userName);
+            if (authCred.Equals(SafeMemoryHandle.Zero)) {
+                digest = AuthenticationDigest.None;
+            }
+        }
+        if (privacy != PrivacyProtocol.None) {
+            privCred ??= new(null, "Enter privSecret:", userName);
+            if (privCred.Equals(SafeMemoryHandle.Zero)) {
+                privacy = PrivacyProtocol.None;
+            }
+        }
         if (digest is AuthenticationDigest.None && privacy is PrivacyProtocol.None) {
             flags = MsgFlags.NoAuthNoPrivRep;
         } else if (digest is AuthenticationDigest.None) {
@@ -125,12 +131,6 @@ public abstract class Request : ISnmpRequest, IDisposable {
             privacyProvider = new(privacy.Value, authProvider);
         }
         IPAddress ipAddress = IPAddress.Parse(ip);
-        if (digest != AuthenticationDigest.None) {
-            authCred ??= new(null, "Enter authSecret:", userName);
-        }
-        if (privacy != PrivacyProtocol.None) {
-            privCred ??= new(null, "Enter privSecret:", userName);
-        }
         Asn1Tag requestTag = new(TagClass.ContextSpecific, 0, true);
         int requestId = Random.Shared.Next();
         List<VarBinding> vbs = [];
