@@ -11,7 +11,8 @@ public class UsmSecurityParameters : Sequence {
     public OctetStringRaw MsgPrivacyParameters => (OctetStringRaw)Items[5];
     public UsmSecurityParameters(ReadOnlySpan<byte> raw) : base(raw) {
         if (Items.Count != 6) {
-            throw new ArgumentException($"UsmSecurityParameters expects a SEQUENCE of 6 items exactly. Actual: {Items.Count}");
+            throw new SnmpDecodingException(
+                msg: $"UsmSecurityParameters expects a SEQUENCE of 6 items exactly. Actual: {Items.Count}");
         }
     }
     public UsmSecurityParameters(

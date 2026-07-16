@@ -58,9 +58,14 @@ public class SnmpV3Request : Request {
             SnmpV3Asn1Structure? resp = Discover(cts.Token);
             if (resp is null) {
                 if (cts.IsCancellationRequested) {
-                    throw new TimeoutException("Did not recieve a proper response within the alloted timeout window.");
+                    throw new SnmpNetworkException(
+                        SnmpExceptionCode.RequestTimedOut,
+                        "Did not recieve a proper response within the alloted timeout window."
+                    );
                 } else {
-                    throw new AsnContentException("Unable to parse SNMP Discovery response");
+                    throw new SnmpDecodingException(
+                        sysException: new AsnContentException("Unable to parse SNMP Discovery response")
+                    );
                 }
             }
         }
@@ -76,7 +81,10 @@ public class SnmpV3Request : Request {
         while (resp is null && !token.IsCancellationRequested && retry < _retries) {
             try {
                 sent = _socket.Send(package);
-                if (sent != package.Length) { throw new Exception("Temp panic and die"); }
+                if (sent != package.Length) {
+                    throw new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
+                }
+#if UNSAFEVERBOSE
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"{(disco ? "Discovery " : "Request   ")}Package Sent [{package.Length:D3}]: {string.Join(' ', package.ToArray().Select(b => Convert.ToHexString([b])))}");
@@ -105,11 +113,13 @@ public class SnmpV3Request : Request {
                 _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
             } catch (Exception ex) {
                 resp = null;
-                throw new SnmpException("Error parsing SNMP response.", ex);
+                throw new SnmpDecodingException(msg: "Error parsing SNMP response.", sysException: ex);
             }
         }
         if (resp is null) {
-            throw new TimeoutException("Failed to receive any response within the timeout and retry parameters.");
+            throw new SnmpNetworkException(
+                SnmpExceptionCode.RequestTimedOut, 
+                "Failed to receive any response within the timeout and retry parameters.");
         }
         return resp;
     }

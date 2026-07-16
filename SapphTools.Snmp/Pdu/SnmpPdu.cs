@@ -87,13 +87,13 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
         List<IAsn1Node> children = ParseChildren(raw, true);
 
         if (children.Count < 4) {
-            throw new FormatException("PDU content too short");
+            throw new SnmpDecodingException(msg: "PDU content too short");
         }
 
-        Integer reqNode = children[0] as Integer ?? throw new FormatException("Missing requestId");
-        Integer errStatusNode = children[1] as Integer ?? throw new FormatException("Missing errorStatus");
-        Integer errIndexNode = children[2] as Integer ?? throw new FormatException("Missing errorIndex");
-        Sequence varBindSeq = children[3] as Sequence ?? throw new FormatException("Missing varBind sequence");
+        Integer reqNode = children[0] as Integer ?? throw new SnmpDecodingException(msg: "PDU missing requestId.");
+        Integer errStatusNode = children[1] as Integer ?? throw new SnmpDecodingException(msg: "PDU Missing errorStatus.");
+        Integer errIndexNode = children[2] as Integer ?? throw new SnmpDecodingException(msg: "PDU Missing errorIndex.");
+        Sequence varBindSeq = children[3] as Sequence ?? throw new SnmpDecodingException(msg: "PDU Missing varBind sequence.");
         List<VarBinding> varBindings = [];
         if (varBindSeq.Items.All(i => i is Sequence)) {
             foreach (Sequence seq in varBindSeq.Items.Cast<Sequence>()) {

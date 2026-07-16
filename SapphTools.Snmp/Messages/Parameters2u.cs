@@ -21,22 +21,22 @@ public readonly struct Parameters2u {
         Model = model;
         QoS = qos;
         if (agentId.Length != 12) {
-            throw new ArgumentException("AgentId must be exactly 12 bytes long.");
+            throw new SnmpArgumentException(msg: "AgentId must be exactly 12 bytes long.", paramName: nameof(agentId));
         }
         AgentId = agentId;
         AgentBoots = agentBoots;
         AgentTime = agentTime;
         MaxSize = maxSize;
         if (userName.Length < 0 || userName.Length > 16) {
-            throw new ArgumentException("UserName must be between 0 and 16 bytes long.");
+            throw new SnmpArgumentException(msg: "UserName must be between 0 and 16 bytes long.", paramName: nameof(userName));
         }
         UserName = userName;
         if (authDigest.Length > 255) {
-            throw new ArgumentException("AuthDigest must be at most 255 bytes long.");
+            throw new SnmpArgumentException(msg: "AuthDigest must be at most 255 bytes long.", paramName: nameof(authDigest));
         }
         AuthDigest = authDigest;
         if (contextSel.Length > 40) {
-            throw new ArgumentException("ContextSel must be at most 40 bytes long.");
+            throw new SnmpArgumentException(msg: "ContextSel must be at most 40 bytes long.", paramName: nameof(contextSel));
         }
         ContextSel = contextSel;
     }

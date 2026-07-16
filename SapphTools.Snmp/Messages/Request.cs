@@ -111,7 +111,11 @@ public abstract class Request : ISnmpRequest, IDisposable {
         if (digest is AuthenticationDigest.None && privacy is PrivacyProtocol.None) {
             flags = MsgFlags.NoAuthNoPrivRep;
         } else if (digest is AuthenticationDigest.None) {
-            throw new UnreachableException();
+            throw new SnmpArgumentException(
+                SnmpExceptionCode.UnsupportedNoAuthPriv,
+                "Cannot set PrivacyProtocol with AuthenticationDigest null or None.",
+                nameof(digest)
+            );
         } else if (privacy is PrivacyProtocol.None) {
             flags = MsgFlags.AuthNoPrivRep;
             authProvider = new(digest.Value);
