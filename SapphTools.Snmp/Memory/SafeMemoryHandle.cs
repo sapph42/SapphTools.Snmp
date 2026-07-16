@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 
 namespace SapphTools.Snmp.Memory;
 
-public class SafeMemoryHandle : SafeHandle {
+public class SafeMemoryHandle : SafeHandle, IEquatable<SafeMemoryHandle> {
     public enum MemoryType {
         None,
         Heap,
@@ -26,12 +26,10 @@ public class SafeMemoryHandle : SafeHandle {
     public SafeMemoryHandle(IntPtr existingHandle, bool ownsHandle, int length, MemoryType type) :
         this(existingHandle, ownsHandle, (uint)length, type) { }
 
-    public void Decrypt() {
-        _ = CryptMem.CryptUnprotectMemory(this);
-    }
+    public void Decrypt() => _ = CryptMem.CryptUnprotectMemory(this);
     public unsafe SafeMemoryHandle Encrypt(bool release = true) {
         if (GetEncryptSize() == EncryptedLength) {
-            CryptMem.CryptProtectMemory(this);
+            _ = CryptMem.CryptProtectMemory(this);
             return this;
         }
         uint encryptSize = GetEncryptSize();
@@ -86,21 +84,22 @@ public class SafeMemoryHandle : SafeHandle {
         }
         ZeroMem();
         switch (Type) {
-            case MemoryType.None:
-                return false;
             case MemoryType.Heap:
                 Marshal.FreeHGlobal(handle);
                 break;
             case MemoryType.CoTaskMem:
                 Marshal.FreeCoTaskMem(handle);
                 break;
+            case MemoryType.None:
+            default:
+                return false;
         }
         return true;
     }
     public static SafeMemoryHandle Create(MemoryType type, uint length) {
         return type switch {
             MemoryType.CoTaskMem => new SafeMemoryHandle(Marshal.AllocCoTaskMem((int)length), true, length, MemoryType.CoTaskMem),
-            _ => new SafeMemoryHandle(Marshal.AllocHGlobal((int)length), true, length, MemoryType.Heap),
+            MemoryType.None or MemoryType.Heap or _ => new SafeMemoryHandle(Marshal.AllocHGlobal((int)length), true, length, MemoryType.Heap)
         };
     }
     public static SafeMemoryHandle CreateCoTaskMem(uint length) => Create(MemoryType.CoTaskMem, length);
@@ -126,4 +125,15 @@ public class SafeMemoryHandle : SafeHandle {
         }
         _ = ReleaseHandle();
     }
+    public bool Equals(SafeMemoryHandle? other) {
+        if (other is null) {
+            return false;
+        }
+        if (handle == IntPtr.Zero && other.handle == IntPtr.Zero) {
+            return true;
+        }
+        return handle == other.handle && Length == other.Length && Type == other.Type;
+    }
+    public override bool Equals(object? obj) => Equals(obj as SafeMemoryHandle);
+    public override int GetHashCode() => base.GetHashCode();
 }
