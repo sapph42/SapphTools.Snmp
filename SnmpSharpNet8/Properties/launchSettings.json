@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SnmpSharpNet8": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
