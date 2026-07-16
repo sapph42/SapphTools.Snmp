@@ -1,51 +1,47 @@
 ﻿namespace SapphTools.Snmp.Exceptions;
 
 [Serializable]
-public class SnmpException : Exception {
-    /// <summary>
-    /// Error code. Provides a finer grained information about why the exception happened. This can be useful to
-    /// the process handling the error to determine how critical the error that occured is and what followup actions
-    /// to take.
-    /// </summary>
-    protected SnmpExceptionCodes _errorCode;
-    /// <summary>
-    /// Get/Set error code associated with the exception
-    /// </summary>
-    public SnmpExceptionCodes ErrorCode {
-        get { return _errorCode; }
-        set { _errorCode = value; }
-    }
+public class SnmpException(
+        SnmpExceptionCode? errorCode = SnmpExceptionCode.None,
+        string? msg = null,
+        Exception? ex = null) :
+    Exception(
+        msg ?? ex?.ToString(),
+        ex) {
 
-    /// <summary>
-    /// Constructor.
-    /// </summary>
-    public SnmpException() : base() { }
-    /// <summary>
-    /// Standard constructor
-    /// </summary>
-    /// <param name="msg">SNMP Exception message</param>
-    public SnmpException(string msg) : base(msg) { }
-    public SnmpException(string msg, Exception ex) : base(msg, ex) { }
-    /// <summary>
-    /// Constructor
-    /// </summary>
-    /// <param name="errorCode">Error code associated with the exception</param>
-    /// <param name="msg">Error message</param>
-    public SnmpException(SnmpExceptionCodes errorCode, string msg) : base(msg) {
-        _errorCode = errorCode;
+    protected SnmpExceptionCode _errorCode = errorCode ?? SnmpExceptionCode.None;
+    public SnmpExceptionCode ErrorCode {
+        get => _errorCode;
+        set => _errorCode = value;
     }
-    public SnmpException(SnmpExceptionCodes errorCode, string msg, Exception ex) : base(msg, ex) {
-        _errorCode = errorCode;
-    }
-    /// <summary>
-    /// Constructor
-    /// </summary>
-    /// <param name="errorCode">Error code associated with the exception</param>
-    /// <param name="msg">Error message</param>
-    public SnmpException(int errorCode, string msg) : base(msg) {
-        _errorCode = (SnmpExceptionCodes)errorCode;
-    }
-    public SnmpException(int errorCode, string msg, Exception ex) : base(msg, ex) {
-        _errorCode = (SnmpExceptionCodes)errorCode;
-    }
+    public SnmpException(int errorCode, string? msg = null, Exception? ex = null) :
+        this((SnmpExceptionCode)errorCode, msg, ex) { }
 }
+public class SnmpArgumentException(
+        SnmpExceptionCode? errorCode = null,
+        string? msg = null,
+        string? paramName = null,
+        Exception? sysException = null) : 
+    SnmpException(errorCode, $"{msg} (Parameter '{paramName}')", sysException) {
+}
+public class SnmpAuthenticationException(
+        SnmpExceptionCode errorCode = SnmpExceptionCode.AuthenticationFailed,
+        string? msg = null,
+        Exception? sysException = null) :
+    SnmpException(errorCode, msg, sysException) { }
+public class SnmpDecodingException(
+        SnmpExceptionCode errorCode = SnmpExceptionCode.ParsingError,
+        string? msg = null,
+        Exception? sysException = null) :
+    SnmpException(errorCode, msg, sysException) { }
+public class SnmpInvalidVersionException(
+        string? msg = null,
+        Exception? sysException = null) :
+    SnmpException(null, msg, sysException) { }
+public class SnmpNetworkException(
+        SnmpExceptionCode errorCode = SnmpExceptionCode.NetworkError,
+        string? msg = null,
+        Exception? sysException = null) :
+    SnmpException(errorCode, msg, sysException) { }
+public class SnmpPrivacyException(string? msg, Exception? sysException = null) :
+    SnmpException(SnmpExceptionCode.InvalidPrivacyParameterLength, msg, sysException) { }
