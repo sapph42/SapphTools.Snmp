@@ -29,10 +29,8 @@ public class SnmpV3Request : Request {
     internal Stopwatch EngineTimeMod = new();
 
     public override Integer Version => new([0x3]);
-    public override IRequestPdu Pdu { get; init; } = new SnmpPdu([], new Asn1Tag(UniversalTagNumber.Null), 0, 0, 0, []);
     public required ScopedPdu ScopedPdu { get; init; }
 
-    public int Timeout { get; set; } = 5000;
     internal SnmpV3Request(IPAddress ip, int port, int timeout, int retries, MsgFlags flags) : base(ip, port, timeout, retries) {
         Flags = flags;
         _ = Random.Shared.Next();
@@ -80,6 +78,7 @@ public class SnmpV3Request : Request {
         int retry = 0;
         while (resp is null && !token.IsCancellationRequested && retry < _retries) {
             try {
+                retry++;
                 sent = _socket.Send(package);
                 if (sent != package.Length) {
                     throw new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
@@ -88,8 +87,9 @@ public class SnmpV3Request : Request {
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"{(disco ? "Discovery " : "Request   ")}Package Sent [{package.Length:D3}]: {string.Join(' ', package.ToArray().Select(b => Convert.ToHexString([b])))}");
+                Debug.WriteLine($"Waiting for response, receive timeout: {_socket.ReceiveTimeout}, retry {retry - 1}");
+#endif
                 int bytesRead = 0;
-                Debug.WriteLine($"Waiting for response, receive timeout: {_socket.ReceiveTimeout}, retry {retry++}");
                 try {
                     bytesRead = _socket.Receive(response);
                 } catch (SocketException se) when (se.ErrorCode == 10060) { }
@@ -97,9 +97,11 @@ public class SnmpV3Request : Request {
                     continue;
                 }
                 response = response[..bytesRead];
+#if UNSAFEVERBOSE
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"{(disco ? "Discovery " : "Request   ")}Package Recv [{response.Length:D3}]: {string.Join(' ', response.ToArray().Select(b => Convert.ToHexString([b])))}");
+#endif
                 if (disco) {
                     resp = (SnmpV3Asn1Structure)Parser.ParseSnmp(response);
                 } else {
@@ -111,6 +113,7 @@ public class SnmpV3Request : Request {
                     continue;
                 }
                 _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
+                EngineTimeMod.Restart();
             } catch (Exception ex) {
                 resp = null;
                 throw new SnmpDecodingException(msg: "Error parsing SNMP response.", sysException: ex);
