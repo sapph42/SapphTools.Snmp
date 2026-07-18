@@ -1,5 +1,6 @@
 ﻿using SapphTools.Asn1;
 using SapphTools.Asn1.DataTypes;
+using SapphTools.Snmp.Asn1;
 using SapphTools.Snmp.Pdu;
 using SapphTools.Snmp.Security;
 using System.Diagnostics;
@@ -35,12 +36,31 @@ public class SnmpV3Request : Request {
         Flags = flags;
         _ = Random.Shared.Next();
     }
-    public SnmpV3Asn1Structure? Get(string[] oids) => InternalGet(oids, null, null, null, null);
+    public SnmpV3Asn1Structure? Get(string[] oids) =>
+        InternalGet(oids, GeneralRequestType.GetRequest, null, null, null, null);
     public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Credential authCred) =>
-        InternalGet(oids, auth, null, authCred, null);
+        InternalGet(oids, GeneralRequestType.GetRequest, auth, null, authCred, null);
     public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
-        InternalGet(oids, auth, priv, authCred, privCred);
-    private SnmpV3Asn1Structure? InternalGet(string[] oids, Authentication? auth, Privacy? priv, Credential? authCred, Credential? privCred) {
+        InternalGet(oids, GeneralRequestType.GetRequest, auth, priv, authCred, privCred);
+    public SnmpV3Asn1Structure? GetNext(string[] oids) =>
+        InternalGet(oids, GeneralRequestType.GetNextRequest, null, null, null, null);
+    public SnmpV3Asn1Structure? GetNext(string[] oids, Authentication auth, Credential authCred) =>
+        InternalGet(oids, GeneralRequestType.GetNextRequest, auth, null, authCred, null);
+    public SnmpV3Asn1Structure? GetNext(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
+        InternalGet(oids, GeneralRequestType.GetNextRequest, auth, priv, authCred, privCred);
+    public List<SnmpV3Asn1Structure> Walk(string ancestorOid) =>
+        InternalWalk(ancestorOid, null, null, null, null);
+    public List<SnmpV3Asn1Structure> Walk(string ancestorOid, Authentication auth, Credential authCred) =>
+        InternalWalk(ancestorOid, auth, null, authCred, null);
+    public List<SnmpV3Asn1Structure> Walk(string ancestorOid, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
+        InternalWalk(ancestorOid, auth, priv, authCred, privCred);
+    private SnmpV3Asn1Structure? InternalGet(
+            string[] oids,
+            GeneralRequestType type,
+            Authentication? auth,
+            Privacy? priv,
+            Credential? authCred,
+            Credential? privCred) {
         AuthCred ??= authCred;
         PrivCred ??= privCred;
         AuthAlgo ??= auth;
@@ -68,8 +88,65 @@ public class SnmpV3Request : Request {
             }
         }
         cts = new(Timeout * _retries);
-        ReadOnlySpan<byte> package = Construct(oids, out long requestId);
-        return Send(package, requestId, false, cts.Token);
+        ReadOnlySpan<byte> package = Construct(oids, type, out long messageId);
+        return Send(package, messageId, false, cts.Token);
+    }
+    private List<SnmpV3Asn1Structure> InternalWalk(
+            string ancestorOid,
+            Authentication? auth,
+            Privacy? priv,
+            Credential? authCred,
+            Credential? privCred) {
+        AuthCred ??= authCred;
+        PrivCred ??= privCred;
+        AuthAlgo ??= auth;
+        PrivAlgo ??= priv;
+        Flags = AuthAlgo is null
+            ? MsgFlags.None
+            : PrivAlgo is null
+                ? MsgFlags.AuthNoPrivRep
+                : MsgFlags.AuthPrivRep;
+        CancellationTokenSource cts;
+        SnmpV3Asn1Structure? resp;
+        if (!_didDiscovery) {
+            cts = new(Timeout * _retries);
+            resp = Discover(cts.Token);
+            if (resp is null) {
+                if (cts.IsCancellationRequested) {
+                    throw new SnmpNetworkException(
+                        SnmpExceptionCode.RequestTimedOut,
+                        "Did not recieve a proper response within the alloted timeout window."
+                    );
+                } else {
+                    throw new SnmpDecodingException(
+                        sysException: new AsnContentException("Unable to parse SNMP Discovery response")
+                    );
+                }
+            }
+        }
+        resp = null;
+        List<SnmpV3Asn1Structure> tree = [];
+        string oid = ancestorOid;
+        do {
+            cts = new(Timeout * _retries);
+            ReadOnlySpan<byte> package = Construct([oid], GeneralRequestType.GetNextRequest, out long messageId);
+            resp = Send(package, messageId, false, cts.Token);
+            if (resp is not null &&
+                    resp.ScopedPdu.InnerPdu.ErrorStatus == 0 &&
+                    resp.ScopedPdu.InnerPdu.VarBindings.Any() &&
+                    resp.ScopedPdu.InnerPdu.VarBindings[0] is VarBinding vb &&
+                    vb.Bound is not (EndOfMibView or NoSuchObject or NoSuchInstance) &&
+                    vb.Name.Value.Value is string oidStr &&
+                    oidStr.StartsWith(ancestorOid + '.') &&
+                    !oidStr.Equals(oid, StringComparison.OrdinalIgnoreCase)
+            ) {
+                oid = oidStr;
+                tree.Add(resp);
+            } else {
+                resp = null;
+            }
+        } while (resp is not null);
+        return tree;
     }
     private SnmpV3Asn1Structure? Send(ReadOnlySpan<byte> package, long requestId, bool disco, CancellationToken token) {
         int sent;
@@ -83,7 +160,7 @@ public class SnmpV3Request : Request {
                 if (sent != package.Length) {
                     throw new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
                 }
-#if UNSAFEVERBOSE
+#if DEBUG
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"{(disco ? "Discovery " : "Request   ")}Package Sent [{package.Length:D3}]: {string.Join(' ', package.ToArray().Select(b => Convert.ToHexString([b])))}");
@@ -97,7 +174,7 @@ public class SnmpV3Request : Request {
                     continue;
                 }
                 response = response[..bytesRead];
-#if UNSAFEVERBOSE
+#if DEBUG
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"{(disco ? "Discovery " : "Request   ")}Package Recv [{response.Length:D3}]: {string.Join(' ', response.ToArray().Select(b => Convert.ToHexString([b])))}");
@@ -121,16 +198,15 @@ public class SnmpV3Request : Request {
         }
         if (resp is null) {
             throw new SnmpNetworkException(
-                SnmpExceptionCode.RequestTimedOut, 
+                SnmpExceptionCode.RequestTimedOut,
                 "Failed to receive any response within the timeout and retry parameters.");
         }
         return resp;
     }
     public SnmpV3Asn1Structure? Discover(CancellationToken token) {
-        ReadOnlySpan<byte> package = Construct([], out long requestId);
+        ReadOnlySpan<byte> package = Construct([], GeneralRequestType.GetRequest, out long requestId);
         SnmpV3Asn1Structure? resp = Send(package, requestId, true, token);
         if (resp is not null) {
-            EngineTimeMod.Start();
             _msgAuthoritativeEngineID = resp.UsmSecurityParameters.MsgAuthoritativeEngineID;
             _msgAuthoritativeEngineBoots = resp.UsmSecurityParameters.MsgAuthoritativeEngineBoots;
             _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
@@ -140,7 +216,7 @@ public class SnmpV3Request : Request {
         }
         return resp;
     }
-    public override ReadOnlySpan<byte> Construct(string[] oids, out long requestId) {
+    public override ReadOnlySpan<byte> Construct(string[] oids, GeneralRequestType type, out long requestId) {
         if (_msgAuthoritativeEngineID.Value == "" | _msgAuthoritativeEngineBoots.Value == 0 | _msgAuthoritativeEngineTime.Value == 0) {
             _didDiscovery = false;
         }
@@ -159,7 +235,7 @@ public class SnmpV3Request : Request {
             vbs.Add(vb);
         }
         SnmpPdu innerPdu = SnmpPdu.Build(
-            new Asn1Tag(TagClass.ContextSpecific, 0, true),
+            type.ToTag(),
             vbs
         );
         requestId = innerPdu.RequestId;
@@ -168,6 +244,15 @@ public class SnmpV3Request : Request {
         };
         spdu = scopedPdu.Construct();
         byte[] request;
+#if DEBUG
+        Debug.WriteLine("");
+        Debug.WriteLine("");
+        Debug.WriteLine("Pre-Encryption Factors");
+        Debug.WriteLine($"Clear-Text Scoped PDU  [{spdu.Length:D3}]: {string.Join(' ', spdu.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"Engine ID              [{_msgAuthoritativeEngineID.Raw.Length:D3}]: {string.Join(' ', _msgAuthoritativeEngineID.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"Engine Boots                : {_msgAuthoritativeEngineBoots.Value}");
+        Debug.WriteLine($"Engine Time                 : {_msgAuthoritativeEngineTime.Value}");
+#endif
         if (PrivAlgo is not null && PrivCred is not null && AuthAlgo is not null && AuthCred is not null) {
             spdu = PrivCred.Encrypt(
                 spdu,
@@ -176,12 +261,33 @@ public class SnmpV3Request : Request {
                 _msgAuthoritativeEngineTime.Value,
                 PrivAlgo,
                 out byte[] privParams);
+#if DEBUG
+            Debug.WriteLine("");
+            Debug.WriteLine("");
+            Debug.WriteLine("Post-Encryption Factors");
+            Debug.WriteLine($"Privacy Parameters     [{privParams.Length:D3}]: {string.Join(' ', privParams.Select(b => Convert.ToHexString([b])))}");
+#endif
             _msgPrivacyParameters = new(privParams);
             OctetStringRaw encryptedPdu = new(spdu);
-            request = BuildRequest(encryptedPdu.Construct());
+            
+            request = BuildRequest(encryptedPdu.Construct(), useAuthParams: false);
+#if DEBUG
+            Debug.WriteLine("");
+            Debug.WriteLine("");
+            Debug.WriteLine("Pre-Hash Factors");
+            Debug.WriteLine($"Pre-Hash Request       [{request.Length:D3}]: {string.Join(' ', request.ToArray().Select(b => Convert.ToHexString([b])))}");
+            Debug.WriteLine($"Engine ID              [{_msgAuthoritativeEngineID.Raw.Length:D3}]: {string.Join(' ', _msgAuthoritativeEngineID.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+            Debug.WriteLine($"Cached Auth Params     [{_msgAuthenticationParameters.Raw.Length:D3}]: {string.Join(' ', _msgAuthenticationParameters.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+#endif
             _msgAuthenticationParameters = new(
                 AuthCred.GenerateHash(request, _msgAuthoritativeEngineID.Raw, AuthAlgo)
             );
+#if DEBUG
+            Debug.WriteLine("");
+            Debug.WriteLine("");
+            Debug.WriteLine("Post-Hash Factors");
+            Debug.WriteLine($"New Auth Params        [{_msgAuthenticationParameters.Raw.Length:D3}]: {string.Join(' ', _msgAuthenticationParameters.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+#endif
             request = BuildRequest(encryptedPdu.Construct(), true);
         } else if (AuthAlgo is not null && AuthCred is not null) {
             request = BuildRequest(spdu);
@@ -194,18 +300,18 @@ public class SnmpV3Request : Request {
         }
         return request;
     }
-    private byte[] BuildRequest(ReadOnlySpan<byte> spdu, bool retainMessageId = false) {
+    private byte[] BuildRequest(ReadOnlySpan<byte> spdu, bool retainMessageId = false, bool useAuthParams = true) {
         return [
             0x30,
-            ..IDataType.EncodeLength(BuildPayload(spdu, out byte[] payload, retainMessageId)),
+            ..IDataType.EncodeLength(BuildPayload(spdu, out byte[] payload, retainMessageId, useAuthParams)),
             ..payload
         ];
     }
-    private int BuildPayload(ReadOnlySpan<byte> spdu, out byte[] payload, bool retainMessageId = false) {
+    private int BuildPayload(ReadOnlySpan<byte> spdu, out byte[] payload, bool retainMessageId, bool useAuthParams) {
         payload = [
             ..Version.Construct(),
             ..BuildMsgGlobalData(retainMessageId).Construct(),
-            ..new OctetStringRaw(BuildUsmSecurityParameters().Construct()).Construct(),
+            ..new OctetStringRaw(BuildUsmSecurityParameters(useAuthParams).Construct()).Construct(),
             ..spdu
         ];
         return payload.Length;
@@ -220,14 +326,30 @@ public class SnmpV3Request : Request {
         Integer secModel = new(3);
         return new MsgGlobalData(messageId, maxMsgSize, flags, secModel);
     }
-    private UsmSecurityParameters BuildUsmSecurityParameters() {
+    private UsmSecurityParameters BuildUsmSecurityParameters(bool useAuthParams) {
+#if DEBUG
+        Debug.WriteLine("");
+        Debug.WriteLine("");
+        Debug.WriteLine("BuildUsmSecurityParameters");
+        Debug.WriteLine($"Engine ID              [{_msgAuthoritativeEngineID.Raw.Length:D3}]: {string.Join(' ', _msgAuthoritativeEngineID.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"Engine Boots           [{_msgAuthoritativeEngineBoots.Raw.Length:D3}]: {string.Join(' ', _msgAuthoritativeEngineBoots.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"Engine Time            [{BuildAuthoritativeEngineTime().Raw.Length:D3}]: {string.Join(' ', BuildAuthoritativeEngineTime().Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"UserName               [{_msgUserName.Raw.Length:D3}]: {string.Join(' ', _msgUserName.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"Auth Params            [{_msgAuthenticationParameters.Raw.Length:D3}]: {string.Join(' ', _msgAuthenticationParameters.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+        Debug.WriteLine($"Priv Params            [{_msgPrivacyParameters.Raw.Length:D3}]: {string.Join(' ', _msgPrivacyParameters.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+#endif
+        OctetStringRaw authParams = _msgAuthenticationParameters;
+        if (AuthAlgo is not null && !useAuthParams) {
+            ReadOnlySpan<byte> empty = new byte[AuthAlgo.AuthHeaderLength];
+            authParams = new(empty);
+        }
         return _didDiscovery
             ? new(
                 _msgAuthoritativeEngineID,
                 _msgAuthoritativeEngineBoots,
                 BuildAuthoritativeEngineTime(),
                 _msgUserName,
-                _msgAuthenticationParameters,
+                authParams,
                 _msgPrivacyParameters)
             : new(
                 OctetStringRaw.Empty,
