@@ -15,6 +15,7 @@ public abstract class Request : ISnmpRequest, IDisposable {
     protected IPEndPoint _peerEndPoint;
     protected int _requestId;
     protected int _retries = 1;
+    protected ObjectIdentifier? _LastReceivedDuringWalk;
 
     public abstract Integer Version { get; }
     public IPAddress Target { get; init; }
@@ -22,15 +23,32 @@ public abstract class Request : ISnmpRequest, IDisposable {
 
     protected Request(IPAddress target, int port, int timeout, int retries) {
         Target = target;
+        Timeout = timeout;
         _peerEndPoint = new(target, port);
         _socket = new(target.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
         _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
         _socket.ReceiveTimeout = timeout / 2;
         _socket.SendTimeout = timeout / 2;
         _socket.Connect(_peerEndPoint);
+#if TRACE
+        _socket.ReceiveTimeout = -1;
+        _socket.SendTimeout = -1;
+        Timeout = int.MaxValue;
+#endif
         _retries = retries;
     }
-
+    public static SnmpV1Request CreateV1(string ip, string community, int port = 161, int timeout = 0, int retries = 0) {
+        IPAddress ipAddress = IPAddress.Parse(ip);
+        OctetStringRaw communityOS = new(community);
+        Asn1Tag requestTag = new(TagClass.ContextSpecific, 0);
+        int requestId = new Random((int)DateTime.Now.Ticks).Next();
+        List<VarBinding> vbs = [];
+        Asn1Null nullVal = new();
+        SnmpPdu pdu = new([], requestTag, requestId, 0, 0, vbs);
+        return new(ipAddress, port, timeout, retries) {
+            Community = communityOS
+        };
+    }
     public static SnmpV2cRequest CreateV2(string ip, string community, int port = 161, int timeout = 0, int retries = 0)
         => CreateV2c(ip, community, port, timeout, retries);
 
@@ -150,7 +168,7 @@ public abstract class Request : ISnmpRequest, IDisposable {
             _contextName = new(contextName)
         };
     }
-    public abstract ReadOnlySpan<byte> Construct(string[] oids, out long requestId);
+    public abstract ReadOnlySpan<byte> Construct(string[] oids, GeneralRequestType type, out long requestId);
 
     public void Dispose() {
         _socket.Disconnect(false);

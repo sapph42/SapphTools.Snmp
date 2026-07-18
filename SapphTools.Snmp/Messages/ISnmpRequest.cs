@@ -4,5 +4,5 @@ namespace SapphTools.Snmp.Messages;
 
 public interface ISnmpRequest {
     Integer Version { get; }
-    ReadOnlySpan<byte> Construct(string[] oids, out long requestId);
+    ReadOnlySpan<byte> Construct(string[] oids, GeneralRequestType type, out long requestId);
 }
