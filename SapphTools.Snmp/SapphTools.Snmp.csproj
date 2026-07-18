@@ -6,9 +6,12 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AnalysisLevel>latest</AnalysisLevel>
+    <Configurations>Debug;Release;DebugWithUnsafeTrace</Configurations>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugWithUnsafeTrace|AnyCPU'">
     <DefineConstants>$(DefineConstants);UNSAFEVERBOSE</DefineConstants>
   </PropertyGroup>
 

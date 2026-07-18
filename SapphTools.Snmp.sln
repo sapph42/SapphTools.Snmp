@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 18
-VisualStudioVersion = 18.7.11925.98 stable
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37301.10 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SapphTools.Snmp", "SapphTools.Snmp\SapphTools.Snmp.csproj", "{CF36DEA6-99CD-4531-8DC9-BCD52F44317C}"
 EndProject
@@ -17,19 +17,26 @@ EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		DebugWithUnsafeTrace|Any CPU = DebugWithUnsafeTrace|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{CF36DEA6-99CD-4531-8DC9-BCD52F44317C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{CF36DEA6-99CD-4531-8DC9-BCD52F44317C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CF36DEA6-99CD-4531-8DC9-BCD52F44317C}.DebugWithUnsafeTrace|Any CPU.ActiveCfg = DebugWithUnsafeTrace|Any CPU
+		{CF36DEA6-99CD-4531-8DC9-BCD52F44317C}.DebugWithUnsafeTrace|Any CPU.Build.0 = DebugWithUnsafeTrace|Any CPU
 		{CF36DEA6-99CD-4531-8DC9-BCD52F44317C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CF36DEA6-99CD-4531-8DC9-BCD52F44317C}.Release|Any CPU.Build.0 = Release|Any CPU
 		{05555B24-901F-455D-7B04-8FB3F55C7E81}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{05555B24-901F-455D-7B04-8FB3F55C7E81}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05555B24-901F-455D-7B04-8FB3F55C7E81}.DebugWithUnsafeTrace|Any CPU.ActiveCfg = DebugWithUnsafeTrace|Any CPU
+		{05555B24-901F-455D-7B04-8FB3F55C7E81}.DebugWithUnsafeTrace|Any CPU.Build.0 = DebugWithUnsafeTrace|Any CPU
 		{05555B24-901F-455D-7B04-8FB3F55C7E81}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{05555B24-901F-455D-7B04-8FB3F55C7E81}.Release|Any CPU.Build.0 = Release|Any CPU
 		{35039C6A-1FFA-4AE5-A8C9-DCA73EEB9172}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{35039C6A-1FFA-4AE5-A8C9-DCA73EEB9172}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35039C6A-1FFA-4AE5-A8C9-DCA73EEB9172}.DebugWithUnsafeTrace|Any CPU.ActiveCfg = DebugWithUnsafeTrace|Any CPU
+		{35039C6A-1FFA-4AE5-A8C9-DCA73EEB9172}.DebugWithUnsafeTrace|Any CPU.Build.0 = DebugWithUnsafeTrace|Any CPU
 		{35039C6A-1FFA-4AE5-A8C9-DCA73EEB9172}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{35039C6A-1FFA-4AE5-A8C9-DCA73EEB9172}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
