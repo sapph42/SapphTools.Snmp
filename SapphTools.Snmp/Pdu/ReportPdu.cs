@@ -1,5 +1,5 @@
-﻿using SapphTools.Asn1;
-using SapphTools.Asn1.DataTypes;
+﻿using SapphTools.Asn1.DataTypes;
+using SapphTools.Snmp.Asn1;
 using System.Formats.Asn1;
 
 namespace SapphTools.Snmp.Pdu;

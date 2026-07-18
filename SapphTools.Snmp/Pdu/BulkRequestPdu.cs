@@ -1,4 +1,5 @@
 ﻿using SapphTools.Asn1;
+using SapphTools.Snmp.Asn1;
 using System.Formats.Asn1;
 
 namespace SapphTools.Snmp.Pdu;

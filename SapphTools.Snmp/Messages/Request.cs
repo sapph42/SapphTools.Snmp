@@ -1,5 +1,5 @@
-﻿using SapphTools.Asn1;
-using SapphTools.Asn1.DataTypes;
+﻿using SapphTools.Asn1.DataTypes;
+using SapphTools.Snmp.Asn1;
 using SapphTools.Snmp.Memory;
 using SapphTools.Snmp.Pdu;
 using SapphTools.Snmp.Security;
