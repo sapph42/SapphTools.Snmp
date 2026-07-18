@@ -5,6 +5,7 @@ using System.Formats.Asn1;
 
 namespace SapphTools.Snmp.Messages;
 
+public class SnmpV1Asn1Structure : SnmpV2Asn1Structure { }
 public class SnmpV2Asn1Structure : IAsn1Structure {
     private byte[] bytes = [];
 
