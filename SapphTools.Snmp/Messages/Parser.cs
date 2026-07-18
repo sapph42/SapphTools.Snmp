@@ -18,7 +18,6 @@ public static class Parser {
         Asn1Tag msgTag = ReadTag(span);
         Expect(msgTag, TagClass.Universal, (int)UniversalTagNumber.Sequence, "SNMP message");
         IDataType.GetLength(span, out int msgLen, out int msgStart);
-        ReadOnlySpan<byte> body = span.Slice(msgStart, msgLen);
         ReadOnlySpan<byte> msgTlv = span[..(msgStart + msgLen)];
 
         int pos = msgStart;
@@ -79,22 +78,27 @@ public static class Parser {
         IDataType.GetLength(paramEnv.Raw, out int _, out int secParamIndex);
         UsmSecurityParameters secParams = new(paramEnv.Raw[secParamIndex..]);
         ReadOnlySpan<byte> authParams = secParams.MsgAuthenticationParameters.Raw;
-        int authPos = usmIndex + secParams.GetAuthParamsPos(usmLengthCount);
-        if (!authCheckBody.Slice(authPos, authParams.Length).SequenceEqual(authParams)) {
-            throw new SnmpAuthenticationException(msg: "Calculated msgAuthenticatedParameters position failed");
-        }
-        authCheckBody.Slice(authPos, authParams.Length).Clear();
 
         Sequence scopedPduSeq;
         OctetStringRaw? cryptEnv = null;
         ReadOnlySpan<byte> authMessage;
         Asn1Tag scopedPduTag = ReadTag(body[pos..]);
-        if (auth is not null && authCred is not null) {
+        if (auth is not null && authCred is not null && secParams.MsgAuthenticationParameters.Raw.Length > 0) {
+            int authPos = usmIndex + secParams.GetAuthParamsPos(usmLengthCount);
+            Span<byte> authCheck = new byte[authParams.Length];
+            authCheckBody.Slice(authPos, authParams.Length).CopyTo(authCheck);
+            authCheckBody.Slice(authPos, authParams.Length).Clear();
+            if (!authCheck.SequenceEqual(authParams)) {
+                throw new SnmpAuthenticationException(msg: "Calculated msgAuthenticatedParameters position failed");
+            }
             if (!authCred.Authenticate(authParams, authCheckBody, auth)) {
                 throw new SnmpPrivacyException(null, new AuthenticationTagMismatchException());
             }
         }
-        if (priv is not null && privCred is not null && scopedPduTag.HasSameClassAndValue(OctetStringRaw.Tag)) {
+        if (priv is not null &&
+                privCred is not null &&
+                scopedPduTag.HasSameClassAndValue(OctetStringRaw.Tag) &&
+                 secParams.MsgPrivacyParameters.Raw.Length > 0) {
             Expect(scopedPduTag, TagClass.Universal, (int)UniversalTagNumber.OctetString, "Encrypted ScopedPDU Envelope");
             IDataType.GetLength(body[pos..], out int cryptEnvLength, out int cryptEnvIndex);
             pos += cryptEnvIndex;
