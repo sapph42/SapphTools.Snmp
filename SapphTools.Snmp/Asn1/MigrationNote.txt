@@ -1,0 +1,2 @@
+﻿These types were migrated out of the SapphTools.Asn1 project to clarify boundaries between Asn1 and Snmp. 
+The types are still used in the Snmp project, but they are no longer part of the Asn1 project.
