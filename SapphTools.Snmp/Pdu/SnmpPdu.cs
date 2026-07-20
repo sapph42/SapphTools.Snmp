@@ -8,8 +8,16 @@ namespace SapphTools.Snmp.Pdu;
 
 public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>, ITagged<SnmpPdu> {
     public override IReadOnlyList<IAsn1Node>? Children => VarBindings;
-    public long ErrorIndex { get; init; }
-    public long ErrorStatus { get; init; }
+    public int Value1 { get; init; }
+    public int Value2 { get; init; }
+    public int ErrorIndex {
+        get => Value1;
+        init => Value1 = value;
+    }
+    public int ErrorStatus {
+        get => Value2;
+        init => Value2 = value;
+    }
     public Asn1Tag PduType { get; init; }
     static Asn1Tag ITagged<SnmpPdu>.Tag => new(TagClass.ContextSpecific, 30, true);
     public long RequestId { get; init; }
@@ -27,7 +35,7 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
         DataTypeRegistry.RegisterPdu<SnmpPdu>(new(TagClass.ContextSpecific, 8, true));
     }
     public SnmpPdu(ReadOnlySpan<byte> raw, Asn1Tag pduType,
-               long requestId, long errorStatus, long errorIndex,
+               long requestId, int errorStatus, int errorIndex,
                IReadOnlyList<VarBinding> varBindings) : base(raw) {
         Tag = pduType;
         PduType = pduType;
@@ -122,7 +130,7 @@ public class SnmpPdu : Asn1Node, IRequestPdu, IDataType, ICreateFromArg<SnmpPdu>
                 varBindings.Add(vb);
             }
         }
-        return new SnmpPdu(raw, tag, reqNode.Value, errStatusNode.Value, errIndexNode.Value, varBindings);
+        return new SnmpPdu(raw, tag, reqNode.Value, (int)errStatusNode.Value, (int)errIndexNode.Value, varBindings);
     }
     public static SnmpPdu DiscoveryPdu(out long reqId) {
         return new(
