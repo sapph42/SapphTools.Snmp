@@ -2,6 +2,7 @@
 using SapphTools.Asn1.DataTypes;
 using SapphTools.Snmp.Asn1;
 using SapphTools.Snmp.Messages;
+using System.Diagnostics;
 using System.Formats.Asn1;
 
 namespace SapphTools.Snmp.Pdu;
@@ -38,7 +39,17 @@ public sealed class BulkRequestPdu : Asn1Node, IRequestPdu {
         _ = GeneralRequestType.GetBulkRequest.ToTag().Encode(tagByte);
         int requestId = Random.Shared.Next();
         Sequence varBindSeq = new([]);
+        Debug.WriteLine("");
+        Debug.WriteLine("");
+        Debug.WriteLine("Building BulkRequest PDU");
+        Debug.WriteLine("NonRepeaters: ");
+        int nonRepIdx = 0;
         foreach (VarBinding vb in varBindings) {
+            if (nonRepIdx == nonRepeaters) {
+                Debug.WriteLine($"MaxRepetitions: {maxRepetitions}");
+            }
+            nonRepIdx++;
+            Debug.WriteLine($"  {{{vb.Name.Value.Value}}}");
             varBindSeq.AddChild(vb);
         }
         byte[] payload = [
