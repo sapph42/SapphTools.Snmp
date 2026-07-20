@@ -141,8 +141,8 @@ public static class Parser {
                                     ReadOnlySpan<byte> pduBody) {
         int pos = 0;
         long requestId = ReadInteger(pduBody, ref pos, "request-id");
-        long errorStat = ReadInteger(pduBody, ref pos, "error-status");
-        long errorIndex = ReadInteger(pduBody, ref pos, "error-index");
+        int errorStat = (int)ReadInteger(pduBody, ref pos, "error-status");
+        int errorIndex = (int)ReadInteger(pduBody, ref pos, "error-index");
 
         ReadOnlySpan<byte> vbListRest = pduBody[pos..];
         Asn1Tag vbListTag = ReadTag(vbListRest);

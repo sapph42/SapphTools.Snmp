@@ -12,8 +12,8 @@ public class ReportPdu : SnmpPdu, IDataType, ICreateFromArg<ReportPdu>, ITagged<
     public ReportPdu(ReadOnlySpan<byte> raw,
             Asn1Tag pduType,
             long requestId,
-            long errorStatus,
-            long errorIndex,
+            int errorStatus,
+            int errorIndex,
             IReadOnlyList<VarBinding> varBindings
     ) : base(raw, pduType, requestId, errorStatus, errorIndex, varBindings) { }
 
