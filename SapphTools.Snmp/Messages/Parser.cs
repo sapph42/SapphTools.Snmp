@@ -203,7 +203,7 @@ public static class Parser {
         Asn1Tag key = new(valTag.TagClass, valTag.TagValue, isConstructed: false);
         IDataType bound = DataTypeRegistry.Factories.TryGetValue(key, out Func<byte[], IDataType>? factory)
             ? factory(valPayload)
-            : new Unknown(valRest.Slice(valStart, valLen));
+            : new Unknown(valTag, valRest.Slice(valStart, valLen));
 
         return new VarBinding(vbTlv, name, bound);
     }
