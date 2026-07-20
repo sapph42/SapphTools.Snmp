@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Formats.Asn1;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 
 namespace SapphTools.Snmp.Messages;
 
@@ -55,12 +54,12 @@ public class SnmpV3Request : Request {
         InternalWalk(ancestorOid, auth, null, authCred, null);
     public List<SnmpV3Asn1Structure> Walk(string ancestorOid, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
         InternalWalk(ancestorOid, auth, priv, authCred, privCred);
-    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions) =>
-        InternalGetBulk(singleOids, walkedOids, nonRepeaters, maxRepetitions, null, null, null, null);
-    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions, Authentication auth, Credential authCred) =>
-        InternalGetBulk(singleOids, walkedOids, nonRepeaters, maxRepetitions, auth, null, authCred, null);
-    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
-        InternalGetBulk(singleOids, walkedOids, nonRepeaters, maxRepetitions, auth, priv, authCred, privCred);
+    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions) =>
+        InternalGetBulk(singleOids, walkedOids, maxRepetitions, null, null, null, null);
+    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions, Authentication auth, Credential authCred) =>
+        InternalGetBulk(singleOids, walkedOids, maxRepetitions, auth, null, authCred, null);
+    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
+        InternalGetBulk(singleOids, walkedOids, maxRepetitions, auth, priv, authCred, privCred);
     private SnmpV3Asn1Structure? InternalGet(
             string[] oids,
             GeneralRequestType type,
@@ -101,7 +100,6 @@ public class SnmpV3Request : Request {
     private SnmpV3Asn1Structure? InternalGetBulk(
             string[] singleOids,
             string[] walkedOids,
-            int nonRepeaters,
             int maxRepetitions,
             Authentication? auth,
             Privacy? priv,
@@ -134,7 +132,7 @@ public class SnmpV3Request : Request {
             }
         }
         cts = new(Timeout * _retries);
-        ReadOnlySpan<byte> package = Construct(singleOids, walkedOids, nonRepeaters, maxRepetitions, out long messageId);
+        ReadOnlySpan<byte> package = Construct(singleOids, walkedOids, maxRepetitions, out long messageId);
         return Send(package, messageId, false, cts.Token);
     }
     private List<SnmpV3Asn1Structure> InternalWalk(
@@ -316,7 +314,6 @@ public class SnmpV3Request : Request {
 #endif
             _msgPrivacyParameters = new(privParams);
             OctetStringRaw encryptedPdu = new(spdu);
-            
             request = BuildRequest(encryptedPdu.Construct(), useAuthParams: false);
 #if DEBUG
             Debug.WriteLine("");
@@ -347,7 +344,7 @@ public class SnmpV3Request : Request {
         }
         return request;
     }
-    public ReadOnlySpan<byte> Construct(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions, out long requestId) {
+    public ReadOnlySpan<byte> Construct(string[] singleOids, string[] walkedOids, int maxRepetitions, out long requestId) {
         if (_msgAuthoritativeEngineID.Value == "" | _msgAuthoritativeEngineBoots.Value == 0 | _msgAuthoritativeEngineTime.Value == 0) {
             _didDiscovery = false;
         }
@@ -373,7 +370,7 @@ public class SnmpV3Request : Request {
 
         BulkRequestPdu innerPdu = BulkRequestPdu.Build(
             vbs,
-            nonRepeaters,
+            singleOids.Length,
             maxRepetitions
         );
         requestId = innerPdu.RequestId;

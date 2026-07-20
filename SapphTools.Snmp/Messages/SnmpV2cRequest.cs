@@ -30,10 +30,10 @@ public class SnmpV2cRequest : Request {
         ReadOnlySpan<byte> package = Construct(oids, GeneralRequestType.GetNextRequest, out long requestId);
         return Send(package, requestId, cts.Token);
     }
-    public virtual SnmpV2Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions) {
+    public virtual SnmpV2Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions) {
         CancellationTokenSource cts;
         cts = new(Timeout * _retries);
-        ReadOnlySpan<byte> package = Construct(singleOids, walkedOids, nonRepeaters, maxRepetitions, out long requestId);
+        ReadOnlySpan<byte> package = Construct(singleOids, walkedOids, maxRepetitions, out long requestId);
         return Send(package, requestId, cts.Token);
     }
     public virtual List<SnmpV2Asn1Structure> Walk(string ancestorOid) {
@@ -132,7 +132,7 @@ public class SnmpV2cRequest : Request {
             ..payload
         ];
     }
-    public ReadOnlySpan<byte> Construct(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions, out long requestId) {
+    public ReadOnlySpan<byte> Construct(string[] singleOids, string[] walkedOids, int maxRepetitions, out long requestId) {
         List<VarBinding> vbs = [];
         Asn1Null nullVal = new();
         foreach (string oid in singleOids) {
@@ -147,7 +147,7 @@ public class SnmpV2cRequest : Request {
         }
         BulkRequestPdu pdu = BulkRequestPdu.Build(
             vbs,
-            nonRepeaters,
+            singleOids.Length,
             maxRepetitions
         );
         requestId = pdu.RequestId;
