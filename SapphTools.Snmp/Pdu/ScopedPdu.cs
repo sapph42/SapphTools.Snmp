@@ -12,11 +12,11 @@ public class ScopedPdu : IConstructable {
     public required OctetStringRaw ContextEngineId { get; init; }
     public required OctetStringRaw ContextName { get; init; }
     public ReadOnlySpan<byte> Raw => _raw;
-    public required SnmpPdu InnerPdu { get; init; }
+    public required IRequestPdu InnerPdu { get; init; }
     public bool Encrypted { get; set; }
 
     [SetsRequiredMembers]
-    internal ScopedPdu(OctetStringRaw contextEngineId, OctetStringRaw contextName, SnmpPdu requestPdu) {
+    internal ScopedPdu(OctetStringRaw contextEngineId, OctetStringRaw contextName, IRequestPdu requestPdu) {
         ContextEngineId = contextEngineId;
         ContextName = contextName;
         InnerPdu = requestPdu;
@@ -47,9 +47,8 @@ public class ScopedPdu : IConstructable {
             return plain.Construct();
         }
     }
-    
     public static bool TryConvert(Sequence scopedPduSequence, [NotNullWhen(true)] out ScopedPdu? scopedPdu) {
-        if (scopedPduSequence.Items![0] is OctetStringRaw contextEngineId && scopedPduSequence.Items[1] is OctetStringRaw contextName && scopedPduSequence.Items[2] is SnmpPdu pdu) { 
+        if (scopedPduSequence.Items[0] is OctetStringRaw contextEngineId && scopedPduSequence.Items[1] is OctetStringRaw contextName && scopedPduSequence.Items[2] is SnmpPdu pdu) {
             scopedPdu = new(contextEngineId, contextName, pdu);
             return true;
         }
