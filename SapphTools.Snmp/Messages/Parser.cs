@@ -4,6 +4,8 @@ using SapphTools.Snmp.Asn1;
 using SapphTools.Snmp.Pdu;
 using SapphTools.Snmp.Security;
 using System.Formats.Asn1;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using static SapphTools.Asn1.Asn1;
 using static SapphTools.Asn1.Parser;
@@ -11,6 +13,24 @@ using static SapphTools.Asn1.Parser;
 namespace SapphTools.Snmp.Messages;
 
 public static class Parser {
+    static Parser() {
+        Type create = typeof(ICreateFromArg<>);
+        IEnumerable<Type> implementations = Assembly
+            .GetExecutingAssembly()
+            .GetTypes()
+            .Where(t =>
+                t.IsClass &&
+                !t.IsAbstract &&
+                t.GetInterfaces()
+                    .Any(i =>
+                        i.IsGenericType &&
+                        i.GetGenericTypeDefinition() == create
+                    )
+            );
+        foreach (Type type in implementations) {
+            RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+        }
+    }
     public static IAsn1Structure ParseSnmp(Span<byte> rawSpan, Authentication? auth = null, Privacy? priv = null, Credential? authCred = null, Credential? privCred = null) =>
         ParseSnmp(raw: [.. rawSpan], auth, priv, authCred, privCred);
     public static IAsn1Structure ParseSnmp(byte[] raw, Authentication? auth = null, Privacy? priv = null, Credential? authCred = null, Credential? privCred = null) {
