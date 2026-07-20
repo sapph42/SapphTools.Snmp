@@ -1,5 +1,7 @@
 ﻿using SapphTools.Asn1;
+using SapphTools.Asn1.DataTypes;
 using SapphTools.Snmp.Asn1;
+using SapphTools.Snmp.Messages;
 using System.Formats.Asn1;
 
 namespace SapphTools.Snmp.Pdu;
@@ -8,52 +10,72 @@ public sealed class BulkRequestPdu : Asn1Node, IRequestPdu {
     public override IReadOnlyList<IAsn1Node>? Children => VarBindings;
     public Asn1Tag PduType { get; init; }
     public long RequestId { get; init; }
-    public int NonRepeaters { get; init; }
-    public int MaxRepititions { get; init; }
+    public int Value1 { get; init; }
+    public int Value2 { get; init; }
+    public int NonRepeaters {
+        get => Value1;
+        init => Value1 = value;
+    }
+    public int MaxRepititions {
+        get => Value2;
+        init => Value2 = value;
+    }
     public IReadOnlyList<VarBinding> VarBindings { get; init; } = [];
 
-    public BulkRequestPdu(ReadOnlySpan<byte> raw, Asn1Tag pduType,
+    public BulkRequestPdu(ReadOnlySpan<byte> raw,
                long requestId, int nonRepeaters, int maxRepetitions,
                IReadOnlyList<VarBinding> varBindings) : base(raw) {
-        Tag = pduType;
-        PduType = pduType;
+        Tag = GeneralRequestType.GetBulkRequest.ToTag();
+        PduType = GeneralRequestType.GetBulkRequest.ToTag();
         RequestId = requestId;
         NonRepeaters = nonRepeaters;
         MaxRepititions = maxRepetitions;
         VarBindings = varBindings;
     }
-    public override ReadOnlySpan<byte> Construct() => ConstructRequest([], out _);
-    public ReadOnlySpan<byte> Construct(string[] _, out long requestId) => ConstructRequest([], out requestId);
-    public ReadOnlySpan<byte> ConstructRequest(string[] _, out long requestId) {
-        int tagValue = PduType.TagValue;
-        requestId = RequestId;
-        int nonRep = NonRepeaters;
-        int maxRep = MaxRepititions;
-        List<byte> varBindings = [];
-        foreach (VarBinding vb in VarBindings) {
-            varBindings.AddRange(vb.ConstructRequest());
+    public static BulkRequestPdu Build(IReadOnlyList<VarBinding>? varBindings, int nonRepeaters, int maxRepetitions) {
+        varBindings ??= [];
+        Span<byte> tagByte = stackalloc byte[1];
+        _ = GeneralRequestType.GetBulkRequest.ToTag().Encode(tagByte);
+        int requestId = Random.Shared.Next();
+        Sequence varBindSeq = new([]);
+        foreach (VarBinding vb in varBindings) {
+            varBindSeq.AddChild(vb);
         }
+        byte[] payload = [
+            ..new Integer(requestId).Construct(),
+            ..new Integer(nonRepeaters).Construct(),
+            ..new Integer(maxRepetitions).Construct(),
+            ..varBindSeq.Construct()
+        ];
+        return new(payload, requestId, nonRepeaters, maxRepetitions, varBindings);
+    }
+    public override ReadOnlySpan<byte> Construct() => ConstructRequest([], out _);
+    public ReadOnlySpan<byte> Construct(out long requestId) => ConstructRequest([], out requestId);
+    public ReadOnlySpan<byte> ConstructRequest(string[] oids, out long requestId) {
+        Span<byte> tagByte = stackalloc byte[1];
+        _ = PduType.Encode(tagByte);
+        requestId = RequestId;
+        Sequence varBindings = new([]);
+        if (oids.Length == 0) {
+            foreach (VarBinding vb in VarBindings) {
+                varBindings.AddChild(vb);
+            }
+        } else {
+            foreach (string oid in oids) {
+                varBindings.AddChild(new VarBinding(oid, Asn1Null.Instance));
+            }
+        }
+        byte[] payload = [
+            ..new Integer(requestId).Construct(),
+            ..new Integer(NonRepeaters).Construct(),
+            ..new Integer(MaxRepititions).Construct(),
+            ..varBindings.Construct()
+        ];
         return (byte[])[
-            ..BitConverter.GetBytes(tagValue),
-            ..BitConverter.GetBytes(requestId),
-            ..BitConverter.GetBytes(nonRep),
-            ..BitConverter.GetBytes(maxRep),
-            ..varBindings
+            ..tagByte,
+            ..IDataType.EncodeLength(payload.Length),
+            ..payload
         ];
     }
-    public static string PduKind(Asn1Tag t) =>
-    t.TagClass == TagClass.ContextSpecific
-        ? t.TagValue switch {
-            0 => "GetRequest",
-            1 => "GetNextRequest",
-            2 => "GetResponse",
-            3 => "SetRequest",
-            5 => "GetBulkRequest",
-            6 => "InformRequest",
-            7 => "SNMPv2-Trap",
-            8 => "Report",
-            _ => $"PDU({t.TagValue})"
-        }
-        : $"PDU({t.TagClass}:{t.TagValue})";
     static IRequestPdu IRequestPdu.Create(ReadOnlySpan<byte> raw, Asn1Tag tag) => throw new NotImplementedException();
 }
