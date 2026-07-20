@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Formats.Asn1;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 
 namespace SapphTools.Snmp.Messages;
 
@@ -54,6 +55,12 @@ public class SnmpV3Request : Request {
         InternalWalk(ancestorOid, auth, null, authCred, null);
     public List<SnmpV3Asn1Structure> Walk(string ancestorOid, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
         InternalWalk(ancestorOid, auth, priv, authCred, privCred);
+    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions) =>
+        InternalGetBulk(singleOids, walkedOids, nonRepeaters, maxRepetitions, null, null, null, null);
+    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions, Authentication auth, Credential authCred) =>
+        InternalGetBulk(singleOids, walkedOids, nonRepeaters, maxRepetitions, auth, null, authCred, null);
+    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
+        InternalGetBulk(singleOids, walkedOids, nonRepeaters, maxRepetitions, auth, priv, authCred, privCred);
     private SnmpV3Asn1Structure? InternalGet(
             string[] oids,
             GeneralRequestType type,
@@ -89,6 +96,45 @@ public class SnmpV3Request : Request {
         }
         cts = new(Timeout * _retries);
         ReadOnlySpan<byte> package = Construct(oids, type, out long messageId);
+        return Send(package, messageId, false, cts.Token);
+    }
+    private SnmpV3Asn1Structure? InternalGetBulk(
+            string[] singleOids,
+            string[] walkedOids,
+            int nonRepeaters,
+            int maxRepetitions,
+            Authentication? auth,
+            Privacy? priv,
+            Credential? authCred,
+            Credential? privCred) {
+        AuthCred ??= authCred;
+        PrivCred ??= privCred;
+        AuthAlgo ??= auth;
+        PrivAlgo ??= priv;
+        Flags = AuthAlgo is null
+            ? MsgFlags.None
+            : PrivAlgo is null
+                ? MsgFlags.AuthNoPrivRep
+                : MsgFlags.AuthPrivRep;
+        CancellationTokenSource cts;
+        if (!_didDiscovery) {
+            cts = new(Timeout * _retries);
+            SnmpV3Asn1Structure? resp = Discover(cts.Token);
+            if (resp is null) {
+                if (cts.IsCancellationRequested) {
+                    throw new SnmpNetworkException(
+                        SnmpExceptionCode.RequestTimedOut,
+                        "Did not recieve a proper response within the alloted timeout window."
+                    );
+                } else {
+                    throw new SnmpDecodingException(
+                        sysException: new AsnContentException("Unable to parse SNMP Discovery response")
+                    );
+                }
+            }
+        }
+        cts = new(Timeout * _retries);
+        ReadOnlySpan<byte> package = Construct(singleOids, walkedOids, nonRepeaters, maxRepetitions, out long messageId);
         return Send(package, messageId, false, cts.Token);
     }
     private List<SnmpV3Asn1Structure> InternalWalk(
@@ -132,9 +178,10 @@ public class SnmpV3Request : Request {
             ReadOnlySpan<byte> package = Construct([oid], GeneralRequestType.GetNextRequest, out long messageId);
             resp = Send(package, messageId, false, cts.Token);
             if (resp is not null &&
-                    resp.ScopedPdu.InnerPdu.ErrorStatus == 0 &&
-                    resp.ScopedPdu.InnerPdu.VarBindings.Any() &&
-                    resp.ScopedPdu.InnerPdu.VarBindings[0] is VarBinding vb &&
+                    resp.ScopedPdu.InnerPdu is SnmpPdu innerPdu &&
+                    innerPdu.ErrorStatus == 0 &&
+                    innerPdu.VarBindings.Any() &&
+                    innerPdu.VarBindings[0] is VarBinding vb &&
                     vb.Bound is not (EndOfMibView or NoSuchObject or NoSuchInstance) &&
                     vb.Name.Value.Value is string oidStr &&
                     oidStr.StartsWith(ancestorOid + '.') &&
@@ -270,6 +317,89 @@ public class SnmpV3Request : Request {
             _msgPrivacyParameters = new(privParams);
             OctetStringRaw encryptedPdu = new(spdu);
             
+            request = BuildRequest(encryptedPdu.Construct(), useAuthParams: false);
+#if DEBUG
+            Debug.WriteLine("");
+            Debug.WriteLine("");
+            Debug.WriteLine("Pre-Hash Factors");
+            Debug.WriteLine($"Pre-Hash Request       [{request.Length:D3}]: {string.Join(' ', request.ToArray().Select(b => Convert.ToHexString([b])))}");
+            Debug.WriteLine($"Engine ID              [{_msgAuthoritativeEngineID.Raw.Length:D3}]: {string.Join(' ', _msgAuthoritativeEngineID.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+            Debug.WriteLine($"Cached Auth Params     [{_msgAuthenticationParameters.Raw.Length:D3}]: {string.Join(' ', _msgAuthenticationParameters.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+#endif
+            _msgAuthenticationParameters = new(
+                AuthCred.GenerateHash(request, _msgAuthoritativeEngineID.Raw, AuthAlgo)
+            );
+#if DEBUG
+            Debug.WriteLine("");
+            Debug.WriteLine("");
+            Debug.WriteLine("Post-Hash Factors");
+            Debug.WriteLine($"New Auth Params        [{_msgAuthenticationParameters.Raw.Length:D3}]: {string.Join(' ', _msgAuthenticationParameters.Raw.ToArray().Select(b => Convert.ToHexString([b])))}");
+#endif
+            request = BuildRequest(encryptedPdu.Construct(), true);
+        } else if (AuthAlgo is not null && AuthCred is not null) {
+            request = BuildRequest(spdu);
+            _msgAuthenticationParameters = new(
+                AuthCred.GenerateHash(request, _msgAuthoritativeEngineID.Raw, AuthAlgo)
+            );
+            request = BuildRequest(spdu, true);
+        } else {
+            request = BuildRequest(spdu);
+        }
+        return request;
+    }
+    public ReadOnlySpan<byte> Construct(string[] singleOids, string[] walkedOids, int nonRepeaters, int maxRepetitions, out long requestId) {
+        if (_msgAuthoritativeEngineID.Value == "" | _msgAuthoritativeEngineBoots.Value == 0 | _msgAuthoritativeEngineTime.Value == 0) {
+            _didDiscovery = false;
+        }
+        ReadOnlySpan<byte> spdu;
+        if (!_didDiscovery) {
+            ScopedPdu pdu = ScopedPdu.DiscoveryScopedPdu(out requestId);
+            pdu.Encrypted = false;
+            spdu = pdu.Construct();
+            return BuildRequest(spdu);
+        }
+        List<VarBinding> vbs = [];
+        Asn1Null nullVal = new();
+        foreach (string oid in singleOids) {
+            ObjectIdentifier oidNode = new(new OidStruct(oid));
+            VarBinding vb = new([], oidNode, nullVal);
+            vbs.Add(vb);
+        }
+        foreach (string oid in walkedOids) {
+            ObjectIdentifier oidNode = new(new OidStruct(oid));
+            VarBinding vb = new([], oidNode, nullVal);
+            vbs.Add(vb);
+        }
+
+        BulkRequestPdu innerPdu = BulkRequestPdu.Build(
+            vbs,
+            nonRepeaters,
+            maxRepetitions
+        );
+        requestId = innerPdu.RequestId;
+        ScopedPdu scopedPdu = new(_msgAuthoritativeEngineID, _contextName, innerPdu) {
+            Encrypted = false
+        };
+        spdu = scopedPdu.Construct();
+        byte[] request;
+
+        if (PrivAlgo is not null && PrivCred is not null && AuthAlgo is not null && AuthCred is not null) {
+            spdu = PrivCred.Encrypt(
+                spdu,
+                _msgAuthoritativeEngineID.Raw,
+                _msgAuthoritativeEngineBoots.Value,
+                _msgAuthoritativeEngineTime.Value,
+                PrivAlgo,
+                out byte[] privParams);
+#if DEBUG
+            Debug.WriteLine("");
+            Debug.WriteLine("");
+            Debug.WriteLine("Post-Encryption Factors");
+            Debug.WriteLine($"Privacy Parameters     [{privParams.Length:D3}]: {string.Join(' ', privParams.Select(b => Convert.ToHexString([b])))}");
+#endif
+            _msgPrivacyParameters = new(privParams);
+            OctetStringRaw encryptedPdu = new(spdu);
+
             request = BuildRequest(encryptedPdu.Construct(), useAuthParams: false);
 #if DEBUG
             Debug.WriteLine("");
