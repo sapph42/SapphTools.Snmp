@@ -9,6 +9,9 @@ using System.Net.Sockets;
 namespace SapphTools.Snmp.Messages;
 
 public class SnmpV2cRequest : Request {
+    private readonly Result _result = new() {
+        Protocol = "SNMPv2c"
+    };
     public override Integer Version => new([0x1]);
     public required OctetStringRaw Community { get; init; }
     internal SnmpV2cRequest(
@@ -18,25 +21,32 @@ public class SnmpV2cRequest : Request {
             int retries) :
         base(target, port, timeout, retries) { }
 
-    public virtual SnmpV2Asn1Structure? Get(string[] oids) {
+    public virtual Result Get(string[] oids) {
+        _result.Action = "Get";
         CancellationTokenSource cts;
         cts = new(Timeout * _retries);
         ReadOnlySpan<byte> package = Construct(oids, GeneralRequestType.GetRequest, out long requestId);
-        return Send(package, requestId, cts.Token);
+        _ = Send(package, requestId, cts.Token);
+        return _result;
     }
-    public virtual SnmpV2Asn1Structure? GetNext(string[] oids) {
+    public virtual Result GetNext(string[] oids) {
+        _result.Action = "GetNext";
         CancellationTokenSource cts;
         cts = new(Timeout * _retries);
         ReadOnlySpan<byte> package = Construct(oids, GeneralRequestType.GetNextRequest, out long requestId);
-        return Send(package, requestId, cts.Token);
+        _ = Send(package, requestId, cts.Token);
+        return _result;
     }
-    public virtual SnmpV2Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions) {
+    public virtual Result GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions) {
+        _result.Action = "GetBulk";
         CancellationTokenSource cts;
         cts = new(Timeout * _retries);
         ReadOnlySpan<byte> package = Construct(singleOids, walkedOids, maxRepetitions, out long requestId);
-        return Send(package, requestId, cts.Token);
+        _ = Send(package, requestId, cts.Token);
+        return _result;
     }
-    public virtual List<SnmpV2Asn1Structure> Walk(string ancestorOid) {
+    public virtual Result Walk(string ancestorOid) {
+        _result.Action = "Walk";
         List<SnmpV2Asn1Structure> tree = [];
         CancellationTokenSource cts;
         string oid = ancestorOid;
@@ -60,7 +70,13 @@ public class SnmpV2cRequest : Request {
                 resp = null;
             }
         } while (resp is not null);
-        return tree;
+        foreach (SnmpV2Asn1Structure leaf in tree) {
+            foreach (VarBinding vb in leaf.Pdu.VarBindings) {
+                _result.VarBindings.Add(vb);
+    }
+        }
+        _result.Step = ResultStep.SnmpV2VarBindingsAttached;
+        return _result;
     }
     protected virtual SnmpV2Asn1Structure? Send(ReadOnlySpan<byte> package, long requestId, CancellationToken token) {
         int sent;
@@ -68,11 +84,20 @@ public class SnmpV2cRequest : Request {
         SnmpV2Asn1Structure? resp = null;
         int retry = 0;
         while (resp is null && !token.IsCancellationRequested && retry < _retries) {
+            _result.ExceptionCode = SnmpExceptionCode.None;
             try {
                 retry++;
+                try {
                 sent = _socket.Send(package);
+                    _result.Step = ResultStep.SnmpV2RequestSent;
+                } catch (SocketException) {
+                    RefreshSocket();
+                    sent = _socket.Send(package);
+                    _result.Step = ResultStep.SnmpV2RequestSent;
+                }
                 if (sent != package.Length) {
-                    throw new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
+                    _result.Exception = new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
+                    return null;
                 }
 #if DEBUG
                 Debug.WriteLine("");
@@ -83,10 +108,14 @@ public class SnmpV2cRequest : Request {
                 int bytesRead = 0;
                 try {
                     bytesRead = _socket.Receive(response);
-                } catch (SocketException se) when (se.ErrorCode == 10060) { }
+                } catch (SocketException se) when (se.ErrorCode == 10060) {
+                    _result.ExceptionCode = SnmpExceptionCode.RequestTimedOut;
+                }
                 if (bytesRead == 0) {
+                    _result.ExceptionCode = SnmpExceptionCode.NoDataReceived;
                     continue;
                 }
+                _result.Step = ResultStep.SnmpV2ResponseReceived;
                 response = response[..bytesRead];
 #if DEBUG
                 Debug.WriteLine("");
@@ -95,18 +124,29 @@ public class SnmpV2cRequest : Request {
 #endif
                 resp = (SnmpV2Asn1Structure)Parser.ParseSnmp(response);
                 if (resp.Pdu.RequestId != requestId) {
+                    _result.Step = ResultStep.SnmpV2ResponseParsed;
+                    _result.ExceptionCode = SnmpExceptionCode.InvalidRequestId;
                     resp = null;
                     continue;
                 }
+                _result.ExceptionCode = SnmpExceptionCode.None;
+                _result.Step = ResultStep.SnmpV2ResponseParsed;
+                if (_result.Action == "Walk") {
+                    _result.WalkedStructures ??= [];
+                    _result.WalkedStructures.Add(resp);
+                } else {
+                    _result.ParsedStructure = resp;
+                    foreach (VarBinding vb in resp.Pdu.VarBindings) {
+                        _result.VarBindings.Add(vb);
+                    }
+                    _result.Step = ResultStep.SnmpV2VarBindingsAttached;
+                }
             } catch (Exception ex) {
-                resp = null;
-                throw new SnmpDecodingException(msg: "Error parsing SNMP response.", sysException: ex);
+                _result.Exception = new SnmpDecodingException(msg: "Error parsing SNMP response.", sysException: ex);
             }
         }
-        if (resp is null) {
-            throw new SnmpNetworkException(
-                SnmpExceptionCode.RequestTimedOut,
-                "Failed to receive any response within the timeout and retry parameters.");
+        if (_result.Step < ResultStep.SnmpV2ResponseReceived) {
+            _result.ExceptionCode = SnmpExceptionCode.NoDataReceived;
         }
         return resp;
     }

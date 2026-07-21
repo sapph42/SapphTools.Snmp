@@ -4,7 +4,6 @@ using SapphTools.Snmp.Asn1;
 using SapphTools.Snmp.Pdu;
 using SapphTools.Snmp.Security;
 using System.Diagnostics;
-using System.Formats.Asn1;
 using System.Net;
 using System.Net.Sockets;
 
@@ -17,6 +16,9 @@ public class SnmpV3Request : Request {
     private OctetStringRaw _msgAuthoritativeEngineID = new([]);
     private Integer _msgAuthoritativeEngineBoots = new(0);
     private Integer _msgAuthoritativeEngineTime = new(0);
+    private readonly Result _result = new() {
+        Protocol = "SNMPv3"
+    };
     internal OctetStringRaw _msgUserName = new([]);
     private OctetStringRaw _msgAuthenticationParameters = new([]);
     private OctetStringRaw _msgPrivacyParameters = new([]);
@@ -36,37 +38,38 @@ public class SnmpV3Request : Request {
         Flags = flags;
         _ = Random.Shared.Next();
     }
-    public SnmpV3Asn1Structure? Get(string[] oids) =>
+    public Result Get(string[] oids) =>
         InternalGet(oids, GeneralRequestType.GetRequest, null, null, null, null);
-    public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Credential authCred) =>
+    public Result Get(string[] oids, Authentication auth, Credential authCred) =>
         InternalGet(oids, GeneralRequestType.GetRequest, auth, null, authCred, null);
-    public SnmpV3Asn1Structure? Get(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
+    public Result Get(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
         InternalGet(oids, GeneralRequestType.GetRequest, auth, priv, authCred, privCred);
-    public SnmpV3Asn1Structure? GetNext(string[] oids) =>
+    public Result GetNext(string[] oids) =>
         InternalGet(oids, GeneralRequestType.GetNextRequest, null, null, null, null);
-    public SnmpV3Asn1Structure? GetNext(string[] oids, Authentication auth, Credential authCred) =>
+    public Result GetNext(string[] oids, Authentication auth, Credential authCred) =>
         InternalGet(oids, GeneralRequestType.GetNextRequest, auth, null, authCred, null);
-    public SnmpV3Asn1Structure? GetNext(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
+    public Result GetNext(string[] oids, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
         InternalGet(oids, GeneralRequestType.GetNextRequest, auth, priv, authCred, privCred);
-    public List<SnmpV3Asn1Structure> Walk(string ancestorOid) =>
+    public Result Walk(string ancestorOid) =>
         InternalWalk(ancestorOid, null, null, null, null);
-    public List<SnmpV3Asn1Structure> Walk(string ancestorOid, Authentication auth, Credential authCred) =>
+    public Result Walk(string ancestorOid, Authentication auth, Credential authCred) =>
         InternalWalk(ancestorOid, auth, null, authCred, null);
-    public List<SnmpV3Asn1Structure> Walk(string ancestorOid, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
+    public Result Walk(string ancestorOid, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
         InternalWalk(ancestorOid, auth, priv, authCred, privCred);
-    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions) =>
+    public Result GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions) =>
         InternalGetBulk(singleOids, walkedOids, maxRepetitions, null, null, null, null);
-    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions, Authentication auth, Credential authCred) =>
+    public Result GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions, Authentication auth, Credential authCred) =>
         InternalGetBulk(singleOids, walkedOids, maxRepetitions, auth, null, authCred, null);
-    public SnmpV3Asn1Structure? GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
+    public Result GetBulk(string[] singleOids, string[] walkedOids, int maxRepetitions, Authentication auth, Privacy priv, Credential authCred, Credential privCred) =>
         InternalGetBulk(singleOids, walkedOids, maxRepetitions, auth, priv, authCred, privCred);
-    private SnmpV3Asn1Structure? InternalGet(
+    private Result InternalGet(
             string[] oids,
             GeneralRequestType type,
             Authentication? auth,
             Privacy? priv,
             Credential? authCred,
             Credential? privCred) {
+        _result.Action = type == GeneralRequestType.GetRequest ? "Get" : "GetNext";
         AuthCred ??= authCred;
         PrivCred ??= privCred;
         AuthAlgo ??= auth;
@@ -79,25 +82,17 @@ public class SnmpV3Request : Request {
         CancellationTokenSource cts;
         if (!_didDiscovery) {
             cts = new(Timeout * _retries);
-            SnmpV3Asn1Structure? resp = Discover(cts.Token);
-            if (resp is null) {
-                if (cts.IsCancellationRequested) {
-                    throw new SnmpNetworkException(
-                        SnmpExceptionCode.RequestTimedOut,
-                        "Did not recieve a proper response within the alloted timeout window."
-                    );
-                } else {
-                    throw new SnmpDecodingException(
-                        sysException: new AsnContentException("Unable to parse SNMP Discovery response")
-                    );
+            Discover(cts.Token);
+            if (_result.Step != ResultStep.SnmpV3DiscoveryComplete) {
+                return _result;
                 }
             }
-        }
         cts = new(Timeout * _retries);
         ReadOnlySpan<byte> package = Construct(oids, type, out long messageId);
-        return Send(package, messageId, false, cts.Token);
+        _ = Send(package, messageId, false, cts.Token);
+        return _result;
     }
-    private SnmpV3Asn1Structure? InternalGetBulk(
+    private Result InternalGetBulk(
             string[] singleOids,
             string[] walkedOids,
             int maxRepetitions,
@@ -105,6 +100,7 @@ public class SnmpV3Request : Request {
             Privacy? priv,
             Credential? authCred,
             Credential? privCred) {
+        _result.Action = "GetBulk";
         AuthCred ??= authCred;
         PrivCred ??= privCred;
         AuthAlgo ??= auth;
@@ -117,30 +113,23 @@ public class SnmpV3Request : Request {
         CancellationTokenSource cts;
         if (!_didDiscovery) {
             cts = new(Timeout * _retries);
-            SnmpV3Asn1Structure? resp = Discover(cts.Token);
-            if (resp is null) {
-                if (cts.IsCancellationRequested) {
-                    throw new SnmpNetworkException(
-                        SnmpExceptionCode.RequestTimedOut,
-                        "Did not recieve a proper response within the alloted timeout window."
-                    );
-                } else {
-                    throw new SnmpDecodingException(
-                        sysException: new AsnContentException("Unable to parse SNMP Discovery response")
-                    );
+            Discover(cts.Token);
+            if (_result.Step != ResultStep.SnmpV3DiscoveryComplete) {
+                return _result;
                 }
             }
-        }
         cts = new(Timeout * _retries);
         ReadOnlySpan<byte> package = Construct(singleOids, walkedOids, maxRepetitions, out long messageId);
-        return Send(package, messageId, false, cts.Token);
+        _ = Send(package, messageId, false, cts.Token);
+        return _result;
     }
-    private List<SnmpV3Asn1Structure> InternalWalk(
+    private Result InternalWalk(
             string ancestorOid,
             Authentication? auth,
             Privacy? priv,
             Credential? authCred,
             Credential? privCred) {
+        _result.Action = "Walk";
         AuthCred ??= authCred;
         PrivCred ??= privCred;
         AuthAlgo ??= auth;
@@ -154,21 +143,11 @@ public class SnmpV3Request : Request {
         SnmpV3Asn1Structure? resp;
         if (!_didDiscovery) {
             cts = new(Timeout * _retries);
-            resp = Discover(cts.Token);
-            if (resp is null) {
-                if (cts.IsCancellationRequested) {
-                    throw new SnmpNetworkException(
-                        SnmpExceptionCode.RequestTimedOut,
-                        "Did not recieve a proper response within the alloted timeout window."
-                    );
-                } else {
-                    throw new SnmpDecodingException(
-                        sysException: new AsnContentException("Unable to parse SNMP Discovery response")
-                    );
+            Discover(cts.Token);
+            if (_result.Step != ResultStep.SnmpV3DiscoveryComplete) {
+                return _result;
                 }
             }
-        }
-        resp = null;
         List<SnmpV3Asn1Structure> tree = [];
         string oid = ancestorOid;
         do {
@@ -182,7 +161,7 @@ public class SnmpV3Request : Request {
                     innerPdu.VarBindings[0] is VarBinding vb &&
                     vb.Bound is not (EndOfMibView or NoSuchObject or NoSuchInstance) &&
                     vb.Name.Value.Value is string oidStr &&
-                    oidStr.StartsWith(ancestorOid + '.') &&
+                    oidStr.StartsWith(ancestorOid + '.', StringComparison.OrdinalIgnoreCase) &&
                     !oidStr.Equals(oid, StringComparison.OrdinalIgnoreCase)
             ) {
                 oid = oidStr;
@@ -191,7 +170,13 @@ public class SnmpV3Request : Request {
                 resp = null;
             }
         } while (resp is not null);
-        return tree;
+        foreach (SnmpV3Asn1Structure leaf in tree) {
+            foreach (VarBinding vb in leaf.ScopedPdu.InnerPdu.VarBindings) {
+                _result.VarBindings.Add(vb);
+    }
+        }
+        _result.Step = ResultStep.SnmpV3VarBindingsAttached;
+        return _result;
     }
     private SnmpV3Asn1Structure? Send(ReadOnlySpan<byte> package, long requestId, bool disco, CancellationToken token) {
         int sent;
@@ -199,11 +184,20 @@ public class SnmpV3Request : Request {
         SnmpV3Asn1Structure? resp = null;
         int retry = 0;
         while (resp is null && !token.IsCancellationRequested && retry < _retries) {
+            _result.ExceptionCode = SnmpExceptionCode.None;
             try {
                 retry++;
+                try {
                 sent = _socket.Send(package);
+                    _result.Step = disco ? ResultStep.SnmpV3DiscoRequestSent : ResultStep.SnmpV3RequestSent;
+                } catch (SocketException) {
+                    RefreshSocket();
+                    sent = _socket.Send(package);
+                    _result.Step = disco ? ResultStep.SnmpV3DiscoRequestSent : ResultStep.SnmpV3RequestSent;
+                }
                 if (sent != package.Length) {
-                    throw new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
+                    _result.Exception = new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
+                    return null;
                 }
 #if DEBUG
                 Debug.WriteLine("");
@@ -214,10 +208,14 @@ public class SnmpV3Request : Request {
                 int bytesRead = 0;
                 try {
                     bytesRead = _socket.Receive(response);
-                } catch (SocketException se) when (se.ErrorCode == 10060) { }
+                } catch (SocketException se) when (se.ErrorCode == 10060) {
+                    _result.ExceptionCode = SnmpExceptionCode.RequestTimedOut;
+                }
                 if (bytesRead == 0) {
+                    _result.ExceptionCode = SnmpExceptionCode.NoDataReceived;
                     continue;
                 }
+                _result.Step = disco ? ResultStep.SnmpV3DiscoResponseReceived : ResultStep.SnmpV3ResponseReceived;
                 response = response[..bytesRead];
 #if DEBUG
                 Debug.WriteLine("");
@@ -226,40 +224,77 @@ public class SnmpV3Request : Request {
 #endif
                 if (disco) {
                     resp = (SnmpV3Asn1Structure)Parser.ParseSnmp(response);
+                    if (resp is not null) {
+                        _result.Step = ResultStep.SnmpV3DiscoResponseParsed;
+                    }
                 } else {
                     resp = (SnmpV3Asn1Structure)Parser.ParseSnmp(response, AuthAlgo, PrivAlgo, AuthCred, PrivCred);
+                    if (resp is not null) {
+                        _result.Step = ResultStep.SnmpV3ResponseParsed;
+                }
                 }
 
-                if (resp.MsgGlobalData.MsgId.Value != _messageId) {
+                if (resp?.MsgGlobalData.MsgId.Value != _messageId) {
                     resp = null;
                     continue;
                 }
                 _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
                 EngineTimeMod.Restart();
+                if (disco) {
+                    _result.ParsedStructure = resp;
+                    return resp;
+                }
+                if (_result.Action == "Walk") {
+                    _result.WalkedStructures ??= [];
+                    _result.WalkedStructures.Add(resp);
+                } else {
+                    _result.ParsedStructure = resp;
+                    foreach (VarBinding vb in resp.ScopedPdu.InnerPdu.VarBindings) {
+                        if (vb.Name.Value.Value == "1.3.6.1.6.3.15.1.1.1.0") {
+                            _result.ExceptionCode = SnmpExceptionCode.UnsupportedSecurityModel;
+                            return resp;
+                        } else if (vb.Name.Value.Value == "1.3.6.1.6.3.15.1.1.2.0") {
+                            _result.ExceptionCode = SnmpExceptionCode.PacketOutsideTimeWindow;
+                            return resp;
+                        } else if (vb.Name.Value.Value == "1.3.6.1.6.3.15.1.1.3.0") {
+                            _result.ExceptionCode = SnmpExceptionCode.InvalidSecurityName;
+                            return resp;
+                        } else if (vb.Name.Value.Value == "1.3.6.1.6.3.15.1.1.4.0") {
+                            _result.ExceptionCode = SnmpExceptionCode.InvalidAuthoritativeEngineId;
+                            return resp;
+                        } else if (vb.Name.Value.Value == "1.3.6.1.6.3.15.1.1.5.0") {
+                            _result.ExceptionCode = SnmpExceptionCode.AuthenticationFailed;
+                            return resp;
+                        } else if (vb.Name.Value.Value == "1.3.6.1.6.3.15.1.1.6.0") {
+                            _result.ExceptionCode = SnmpExceptionCode.DecryptionFailed;
+                            return resp;
+                        }
+                        _result.VarBindings.Add(vb);
+                    }
+                    _result.Step = ResultStep.SnmpV3VarBindingsAttached;
+                }
             } catch (Exception ex) {
-                resp = null;
-                throw new SnmpDecodingException(msg: "Error parsing SNMP response.", sysException: ex);
+                _result.Exception = new SnmpDecodingException(msg: "Error parsing SNMP response.", sysException: ex);
+                return null;
             }
         }
-        if (resp is null) {
-            throw new SnmpNetworkException(
-                SnmpExceptionCode.RequestTimedOut,
-                "Failed to receive any response within the timeout and retry parameters.");
+        if ((disco && _result.Step < ResultStep.SnmpV3DiscoResponseReceived) || (!disco && _result.Step < ResultStep.SnmpV3ResponseReceived)) {
+            _result.ExceptionCode = SnmpExceptionCode.NoDataReceived;
         }
         return resp;
     }
-    public SnmpV3Asn1Structure? Discover(CancellationToken token) {
+    public void Discover(CancellationToken token) {
         ReadOnlySpan<byte> package = Construct([], GeneralRequestType.GetRequest, out long requestId);
-        SnmpV3Asn1Structure? resp = Send(package, requestId, true, token);
-        if (resp is not null) {
+        _ = Send(package, requestId, true, token);
+        if (_result.Step == ResultStep.SnmpV3DiscoResponseParsed && _result.ParsedStructure is SnmpV3Asn1Structure resp) {
             _msgAuthoritativeEngineID = resp.UsmSecurityParameters.MsgAuthoritativeEngineID;
             _msgAuthoritativeEngineBoots = resp.UsmSecurityParameters.MsgAuthoritativeEngineBoots;
             _msgAuthoritativeEngineTime = resp.UsmSecurityParameters.MsgAuthoritativeEngineTime;
             _msgAuthenticationParameters = new(new string('\0', AuthAlgo?.AuthHeaderLength ?? 0));
             _msgPrivacyParameters = new(new string('\0', PrivAlgo?.PrivacyParametersLength ?? 0));
             _didDiscovery = true;
+            _result.Step = ResultStep.SnmpV3DiscoveryComplete;
         }
-        return resp;
     }
     public override ReadOnlySpan<byte> Construct(string[] oids, GeneralRequestType type, out long requestId) {
         if (_msgAuthoritativeEngineID.Value == "" | _msgAuthoritativeEngineBoots.Value == 0 | _msgAuthoritativeEngineTime.Value == 0) {
