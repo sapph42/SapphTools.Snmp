@@ -75,7 +75,7 @@ public class SafeMemoryHandle : SafeHandle, IEquatable<SafeMemoryHandle> {
         source.CopyTo(new Span<byte>((void*)handle, source.Length));
     }
     public unsafe void ZeroMem() {
-        Span<byte> span = new((void*)handle, (int)Length);
+        Span<byte> span = new((void*)handle, (int)EncryptedLength);
         CryptographicOperations.ZeroMemory(span);
     }
     protected override bool ReleaseHandle() {
@@ -99,7 +99,6 @@ public class SafeMemoryHandle : SafeHandle, IEquatable<SafeMemoryHandle> {
             // ReleaseHandle must not allow exceptions to escape.
             return false;
         }
-    }
     }
     public static SafeMemoryHandle Create(MemoryType type, uint length) {
         return type switch {
