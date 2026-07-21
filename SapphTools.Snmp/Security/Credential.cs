@@ -17,6 +17,7 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
     private SafeMemoryHandle _keyHandle = SafeMemoryHandle.Zero;
     private bool _isEncrypted;
     private delegate Span<byte> KeyConverter(Span<byte> secret, ReadOnlySpan<byte> engineId);
+    private byte[] _engineId = [];
 
     private static readonly CREDUIWIN_FLAGS BASIC = (CREDUIWIN_FLAGS)((int)CREDUIWIN_FLAGS.CREDUIWIN_GENERIC | CREDUIWIN_DO_NOT_PACK_AAD_AUTHORITY);
 
@@ -191,8 +192,13 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         }
         _gate.Wait();
         try {
+            if (!engineId.SequenceEqual(_engineId)) {
+                _keyHandle.Dispose();
+                _keyHandle = SafeMemoryHandle.Zero;
+            }
             if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
                 StoreCryptoKey(privAlgo, engineId);
+                _engineId = [.. engineId];
             }
             if (_isEncrypted) {
                 DecryptKey();
@@ -225,10 +231,15 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         }
         _gate.Wait();
         try {
-            if (_isEncrypted) {
+            if (!engineId.SequenceEqual(_engineId)) {
+                _keyHandle.Dispose();
+                _keyHandle = SafeMemoryHandle.Zero;
+            }
                 if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
                     StoreHashKey(algo, engineId);
+                _engineId = [..engineId];
                 }
+            if (_isEncrypted) {
                 DecryptKey();
                 _isEncrypted = false;
             }
