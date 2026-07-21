@@ -6,6 +6,7 @@ public enum SnmpExceptionCode {
     UnsupportedNoAuthPriv,
     InvalidAuthenticationParameterLength,
     AuthenticationFailed,
+    DecryptionFailed,
     UnsupportedPrivacyProtocol,
     InvalidPrivacyParameterLength,
     InvalidAuthoritativeEngineId,
