@@ -178,10 +178,6 @@ public class SnmpV3Request : Request {
         _result.Step = ResultStep.SnmpV3VarBindingsAttached;
         return _result;
     }
-        }
-        _result.Step = ResultStep.SnmpV3VarBindingsAttached;
-        return _result;
-    }
     private SnmpV3Asn1Structure? Send(ReadOnlySpan<byte> package, long requestId, bool disco, CancellationToken token) {
         int sent;
         Span<byte> response = stackalloc byte[ushort.MaxValue];
@@ -237,8 +233,6 @@ public class SnmpV3Request : Request {
                         _result.Step = ResultStep.SnmpV3ResponseParsed;
                     }
                 }
-                }
-
                 if (resp?.MsgGlobalData.MsgId.Value != _messageId) {
                     resp = null;
                     continue;
