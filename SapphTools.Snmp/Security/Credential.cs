@@ -84,7 +84,7 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         try {
             using SafeMemoryHandle prePack = CredApi.PackCredential(userName);
             _credHandle = CredApi.WindowsCredentialsPrompt(promptText, callerHandle, prePack, BASIC);
-#if DEBUG
+#if UNSAFETRACE
             Span<byte> cred = stackalloc byte[(int)_credHandle.Length];
             _credHandle.CopyTo(cred);
             Debug.WriteLine($"Cred Buffer [{cred.Length:D3}]: {string.Join(' ', cred.ToArray().Select(b => Convert.ToHexString([b])))}");
@@ -107,7 +107,7 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         } else {
             _ = SafeMemoryHandle.MigrateHandle(ref handle, out _credHandle, SafeMemoryHandle.MemoryType.CoTaskMem);
         }
-#if DEBUG
+#if UNSAFETRACE
         Span<byte> cred = stackalloc byte[(int)_credHandle.Length];
         _credHandle.CopyTo(cred);
         Debug.WriteLine($"Input Cred Buffer          [{cred.Length:D3}]: {string.Join(' ', cred.ToArray().Select(b => Convert.ToHexString([b])))}");
@@ -235,10 +235,10 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
                 _keyHandle.Dispose();
                 _keyHandle = SafeMemoryHandle.Zero;
             }
-                if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
-                    StoreHashKey(algo, engineId);
+            if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
+                StoreHashKey(algo, engineId);
                 _engineId = [..engineId];
-                }
+            }
             if (_isEncrypted) {
                 DecryptKey();
                 _isEncrypted = false;
@@ -280,7 +280,7 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
                     }
                     chars[i] = (char)secret[i * 2];
                 }
-#if DEBUG
+#if UNSAFETRACE
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine("Key Generation Requested");
@@ -292,7 +292,7 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
                 for (int i = 0; i < chars.Length; i++) {
                     secret[i] = (byte)chars[i];
                 }
-#if DEBUG
+#if UNSAFETRACE
                 Debug.WriteLine($"Secret ASCII Bytes     [{secret.Length:D3}]: {string.Join(' ', secret.ToArray().Select(b => Convert.ToHexString([b])))}");
 #endif
                 key = keygen(secret, engineId);

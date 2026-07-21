@@ -85,8 +85,8 @@ public class SnmpV3Request : Request {
             Discover(cts.Token);
             if (_result.Step != ResultStep.SnmpV3DiscoveryComplete) {
                 return _result;
-                }
             }
+        }
         cts = new(Timeout * _retries);
         ReadOnlySpan<byte> package = Construct(oids, type, out long messageId);
         _ = Send(package, messageId, false, cts.Token);
@@ -116,8 +116,8 @@ public class SnmpV3Request : Request {
             Discover(cts.Token);
             if (_result.Step != ResultStep.SnmpV3DiscoveryComplete) {
                 return _result;
-                }
             }
+        }
         cts = new(Timeout * _retries);
         ReadOnlySpan<byte> package = Construct(singleOids, walkedOids, maxRepetitions, out long messageId);
         _ = Send(package, messageId, false, cts.Token);
@@ -146,8 +146,8 @@ public class SnmpV3Request : Request {
             Discover(cts.Token);
             if (_result.Step != ResultStep.SnmpV3DiscoveryComplete) {
                 return _result;
-                }
             }
+        }
         List<SnmpV3Asn1Structure> tree = [];
         string oid = ancestorOid;
         do {
@@ -173,6 +173,10 @@ public class SnmpV3Request : Request {
         foreach (SnmpV3Asn1Structure leaf in tree) {
             foreach (VarBinding vb in leaf.ScopedPdu.InnerPdu.VarBindings) {
                 _result.VarBindings.Add(vb);
+            }
+        }
+        _result.Step = ResultStep.SnmpV3VarBindingsAttached;
+        return _result;
     }
         }
         _result.Step = ResultStep.SnmpV3VarBindingsAttached;
@@ -188,7 +192,7 @@ public class SnmpV3Request : Request {
             try {
                 retry++;
                 try {
-                sent = _socket.Send(package);
+                    sent = _socket.Send(package);
                     _result.Step = disco ? ResultStep.SnmpV3DiscoRequestSent : ResultStep.SnmpV3RequestSent;
                 } catch (SocketException) {
                     RefreshSocket();
@@ -199,7 +203,7 @@ public class SnmpV3Request : Request {
                     _result.Exception = new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
                     return null;
                 }
-#if DEBUG
+#if UNSAFETRACE
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"{(disco ? "Discovery " : "Request   ")}Package Sent [{package.Length:D3}]: {string.Join(' ', package.ToArray().Select(b => Convert.ToHexString([b])))}");
@@ -217,7 +221,7 @@ public class SnmpV3Request : Request {
                 }
                 _result.Step = disco ? ResultStep.SnmpV3DiscoResponseReceived : ResultStep.SnmpV3ResponseReceived;
                 response = response[..bytesRead];
-#if DEBUG
+#if UNSAFETRACE
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"{(disco ? "Discovery " : "Request   ")}Package Recv [{response.Length:D3}]: {string.Join(' ', response.ToArray().Select(b => Convert.ToHexString([b])))}");
@@ -231,6 +235,7 @@ public class SnmpV3Request : Request {
                     resp = (SnmpV3Asn1Structure)Parser.ParseSnmp(response, AuthAlgo, PrivAlgo, AuthCred, PrivCred);
                     if (resp is not null) {
                         _result.Step = ResultStep.SnmpV3ResponseParsed;
+                    }
                 }
                 }
 
@@ -324,7 +329,7 @@ public class SnmpV3Request : Request {
         };
         spdu = scopedPdu.Construct();
         byte[] request;
-#if DEBUG
+#if UNSAFETRACE
         Debug.WriteLine("");
         Debug.WriteLine("");
         Debug.WriteLine("Pre-Encryption Factors");
@@ -341,7 +346,7 @@ public class SnmpV3Request : Request {
                 _msgAuthoritativeEngineTime.Value,
                 PrivAlgo,
                 out byte[] privParams);
-#if DEBUG
+#if UNSAFETRACE
             Debug.WriteLine("");
             Debug.WriteLine("");
             Debug.WriteLine("Post-Encryption Factors");
@@ -350,7 +355,7 @@ public class SnmpV3Request : Request {
             _msgPrivacyParameters = new(privParams);
             OctetStringRaw encryptedPdu = new(spdu);
             request = BuildRequest(encryptedPdu.Construct(), useAuthParams: false);
-#if DEBUG
+#if UNSAFETRACE
             Debug.WriteLine("");
             Debug.WriteLine("");
             Debug.WriteLine("Pre-Hash Factors");
@@ -361,7 +366,7 @@ public class SnmpV3Request : Request {
             _msgAuthenticationParameters = new(
                 AuthCred.GenerateHash(request, _msgAuthoritativeEngineID.Raw, AuthAlgo)
             );
-#if DEBUG
+#if UNSAFETRACE
             Debug.WriteLine("");
             Debug.WriteLine("");
             Debug.WriteLine("Post-Hash Factors");
@@ -423,7 +428,7 @@ public class SnmpV3Request : Request {
                 _msgAuthoritativeEngineTime.Value,
                 PrivAlgo,
                 out byte[] privParams);
-#if DEBUG
+#if UNSAFETRACE
             Debug.WriteLine("");
             Debug.WriteLine("");
             Debug.WriteLine("Post-Encryption Factors");
@@ -433,7 +438,7 @@ public class SnmpV3Request : Request {
             OctetStringRaw encryptedPdu = new(spdu);
 
             request = BuildRequest(encryptedPdu.Construct(), useAuthParams: false);
-#if DEBUG
+#if UNSAFETRACE
             Debug.WriteLine("");
             Debug.WriteLine("");
             Debug.WriteLine("Pre-Hash Factors");
@@ -444,7 +449,7 @@ public class SnmpV3Request : Request {
             _msgAuthenticationParameters = new(
                 AuthCred.GenerateHash(request, _msgAuthoritativeEngineID.Raw, AuthAlgo)
             );
-#if DEBUG
+#if UNSAFETRACE
             Debug.WriteLine("");
             Debug.WriteLine("");
             Debug.WriteLine("Post-Hash Factors");
@@ -489,7 +494,7 @@ public class SnmpV3Request : Request {
         return new MsgGlobalData(messageId, maxMsgSize, flags, secModel);
     }
     private UsmSecurityParameters BuildUsmSecurityParameters(bool useAuthParams) {
-#if DEBUG
+#if UNSAFETRACE
         Debug.WriteLine("");
         Debug.WriteLine("");
         Debug.WriteLine("BuildUsmSecurityParameters");

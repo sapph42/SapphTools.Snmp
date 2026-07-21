@@ -32,7 +32,7 @@ public abstract class Request : ISnmpRequest, IDisposable {
         _socket.ReceiveTimeout = Timeout / 2;
         _socket.SendTimeout = Timeout / 2;
         _socket.Connect(_peerEndPoint);
-#if TRACE
+#if NOTRACE
         _socket.ReceiveTimeout = -1;
         _socket.SendTimeout = -1;
         Timeout = int.MaxValue;
@@ -195,7 +195,6 @@ public abstract class Request : ISnmpRequest, IDisposable {
     }
 
     public void Dispose() {
-        _socket.Disconnect(false);
         _socket?.Dispose();
         GC.SuppressFinalize(this);
     }

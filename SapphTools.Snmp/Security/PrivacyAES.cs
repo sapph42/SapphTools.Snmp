@@ -78,7 +78,7 @@ public class PrivacyAES : IPrivacyProtocol {
         Span<byte> iv = stackalloc byte[16];
         byte[] pkey = [..key[..MaximumKeyLength]];
         long salt = NextSalt();
-#if DEBUG
+#if UNSAFETRACE
         Debug.WriteLine("");
         Debug.WriteLine("");
         Debug.WriteLine( "Encrypt Requested           : AES128");
@@ -105,7 +105,7 @@ public class PrivacyAES : IPrivacyProtocol {
                 encryptedData,
                 PaddingMode.Zeros,
                 feedbackSizeInBits: 128);
-#if DEBUG
+#if UNSAFETRACE
             Debug.WriteLine($"IV                     [{iv.Length:D3}]: {string.Join(' ', iv.ToArray().Select(b => Convert.ToHexString([b])))}");
             Debug.WriteLine($"privacyParameters      [{privacyParameters.Length:D3}]: {string.Join(' ', privacyParameters.Select(b => Convert.ToHexString([b])))}");
             Debug.WriteLine($"Encrypted Message      [{unencryptedData.Length:D3}]: {string.Join(' ', encryptedData[..unencryptedData.Length].ToArray().Select(b => Convert.ToHexString([b])))}");

@@ -26,7 +26,7 @@ public class Authentication {
     }
     public ReadOnlySpan<byte> Authenticate(Span<byte> key, ReadOnlySpan<byte> wholeMessage) {
         key = key[..keyLength];
-#if DEBUG
+#if UNSAFETRACE
         Debug.WriteLine("");
         Debug.WriteLine("");
         Debug.WriteLine($"Hash Requested              : {_hashName.Name}");
@@ -40,7 +40,7 @@ public class Authentication {
         using IncrementalHash hmac = IncrementalHash.CreateHMAC(_hashName, key);
         hmac.AppendData(wholeMessage);
         ReadOnlySpan<byte> full = hmac.GetHashAndReset();
-#if DEBUG
+#if UNSAFETRACE
         Debug.WriteLine($"{AuthHeaderLength} Char Calc'ed HMAC    [{AuthHeaderLength}]: {
             string.Join(' ', full[..AuthHeaderLength].ToArray().Select(b => Convert.ToHexString([b])))
             }");
@@ -53,7 +53,7 @@ public class Authentication {
             ReadOnlySpan<byte> authenticationParameters,   // the digest extracted from the received message
             ReadOnlySpan<byte> wholeMessage) {              // MUST already have the auth field zeroed
         key = key[..keyLength];
-#if DEBUG
+#if UNSAFETRACE
         Debug.WriteLine("");
         Debug.WriteLine("");
         Debug.WriteLine($"Auth Requested              : {_hashName.Name}");
@@ -70,7 +70,7 @@ public class Authentication {
         bool match = CryptographicOperations.FixedTimeEquals(
             computed[..AuthHeaderLength],
             authenticationParameters[..AuthHeaderLength]);
-#if DEBUG
+#if UNSAFETRACE
         Debug.WriteLine($"{AuthHeaderLength} Char Calc'ed HMAC    [{AuthHeaderLength}]: {
             string.Join(' ', computed[..AuthHeaderLength].ToArray().Select(b => Convert.ToHexString([b])))
             }");
@@ -94,7 +94,7 @@ public class Authentication {
             produced += 64;
         }
         byte[] ku = inc.GetHashAndReset();
-#if DEBUG
+#if UNSAFETRACE
         Debug.WriteLine("");
         Debug.WriteLine("");
         Debug.WriteLine($"Secret To Key Convert       : {_hashName.Name}");

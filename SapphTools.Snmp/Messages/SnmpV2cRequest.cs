@@ -73,7 +73,7 @@ public class SnmpV2cRequest : Request {
         foreach (SnmpV2Asn1Structure leaf in tree) {
             foreach (VarBinding vb in leaf.Pdu.VarBindings) {
                 _result.VarBindings.Add(vb);
-    }
+            }
         }
         _result.Step = ResultStep.SnmpV2VarBindingsAttached;
         return _result;
@@ -88,7 +88,7 @@ public class SnmpV2cRequest : Request {
             try {
                 retry++;
                 try {
-                sent = _socket.Send(package);
+                    sent = _socket.Send(package);
                     _result.Step = ResultStep.SnmpV2RequestSent;
                 } catch (SocketException) {
                     RefreshSocket();
@@ -99,7 +99,7 @@ public class SnmpV2cRequest : Request {
                     _result.Exception = new SnmpNetworkException(msg: "Number of bytes sent by socket does not match request length.");
                     return null;
                 }
-#if DEBUG
+#if UNSAFETRACE
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"Request Package Sent            [{package.Length:D3}]: {string.Join(' ', package.ToArray().Select(b => Convert.ToHexString([b])))}");
@@ -117,7 +117,7 @@ public class SnmpV2cRequest : Request {
                 }
                 _result.Step = ResultStep.SnmpV2ResponseReceived;
                 response = response[..bytesRead];
-#if DEBUG
+#if UNSAFETRACE
                 Debug.WriteLine("");
                 Debug.WriteLine("");
                 Debug.WriteLine($"Request Package Recv            [{response.Length:D3}]: {string.Join(' ', response.ToArray().Select(b => Convert.ToHexString([b])))}");
