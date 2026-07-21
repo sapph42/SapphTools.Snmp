@@ -14,8 +14,9 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
 
     private bool _disposedValue;
     private SafeMemoryHandle _credHandle;
-    private SafeMemoryHandle _keyHandle = SafeMemoryHandle.Zero;
-    private bool _isEncrypted;
+    private SafeMemoryHandle? _keyHandle;
+    private bool _credentialEncrypted;
+    private bool _keyEncrypted;
     private delegate Span<byte> KeyConverter(Span<byte> secret, ReadOnlySpan<byte> engineId);
     private byte[] _engineId = [];
 
@@ -91,7 +92,7 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
             CryptographicOperations.ZeroMemory(cred);
 #endif
             EncryptCred();
-            _isEncrypted = true;
+            _credentialEncrypted = true;
             Type = CredentialType.User;
         } catch {
             if (!_credHandle?.IsInvalid ?? true) {
@@ -101,11 +102,17 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         }
     }
     public Credential(ref SafeMemoryHandle handle) {
-        if (handle == SafeMemoryHandle.Zero) { }
-        if (handle.Type == SafeMemoryHandle.MemoryType.CoTaskMem) {
-            _credHandle = handle;
+        SafeMemoryHandle transferred =
+            Interlocked.Exchange(ref handle!, null)
+            ?? throw new ArgumentNullException(nameof(handle));
+        if (transferred.Type == SafeMemoryHandle.MemoryType.CoTaskMem) {
+            _credHandle = transferred;
         } else {
-            _ = SafeMemoryHandle.MigrateHandle(ref handle, out _credHandle, SafeMemoryHandle.MemoryType.CoTaskMem);
+            _ = SafeMemoryHandle.MigrateHandle(
+                ref transferred,
+                out _credHandle,
+                SafeMemoryHandle.MemoryType.CoTaskMem
+            );
         }
 #if UNSAFETRACE
         Span<byte> cred = stackalloc byte[(int)_credHandle.Length];
@@ -114,7 +121,7 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         CryptographicOperations.ZeroMemory(cred);
 #endif
         EncryptCred();
-        _isEncrypted = true;
+        _credentialEncrypted = true;
     }
     public Credential(string userName, CredentialType type) {
         Type = type;
@@ -125,17 +132,16 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         };
         _credHandle = CredApi.WindowsCredentialsPrompt(string.Empty, null, prePack, BASIC);
         EncryptCred();
-        _isEncrypted = true;
+        _credentialEncrypted = true;
     }
     public bool Authenticate(ReadOnlySpan<byte> authenticationParameters, ReadOnlySpan<byte> wholeMessage, Authentication algo) {
-        if (_keyHandle.IsInvalid) {
+        if (_keyHandle is null || _keyHandle.IsInvalid) {
             return false;
         }
         _gate.Wait();
         try {
-            if (_isEncrypted) {
+            if (_keyEncrypted) {
                 DecryptKey();
-                _isEncrypted = false;
             }
             Span<byte> key = new byte[_keyHandle.Length];
             try {
@@ -146,19 +152,17 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
             }
         } finally {
             EncryptKey();
-            _isEncrypted = true;
             _ = _gate.Release();
         }
     }
     public ReadOnlySpan<byte> Decrypt(byte[] encryptedBytes, int engineBoots, int engineTime, Privacy algo, Span<byte> privParams) {
-        if (_keyHandle.IsInvalid) {
+        if (_keyHandle is null || _keyHandle.IsInvalid) {
             return [];
         }
         _gate.Wait();
         try {
-            if (_isEncrypted) {
+            if (_keyEncrypted) {
                 DecryptKey();
-                _isEncrypted = false;
             }
             byte[] key = new byte[_keyHandle.Length];
             try {
@@ -175,7 +179,6 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
             }
         } finally {
             EncryptKey();
-            _isEncrypted = true;
             _ = _gate.Release();
         }
     }
@@ -193,18 +196,17 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         _gate.Wait();
         try {
             if (!engineId.SequenceEqual(_engineId)) {
-                _keyHandle.Dispose();
-                _keyHandle = SafeMemoryHandle.Zero;
+                _keyHandle?.Dispose();
+                _keyHandle = null;
             }
-            if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
+            if (_keyHandle is null || _keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
                 StoreCryptoKey(privAlgo, engineId);
                 _engineId = [.. engineId];
             }
-            if (_isEncrypted) {
+            if (_keyEncrypted) {
                 DecryptKey();
-                _isEncrypted = false;
             }
-            Span<byte> key = new byte[_keyHandle.Length];
+            Span<byte> key = new byte[_keyHandle!.Length];
             try {
                 _keyHandle.CopyTo(key);
                 Span<byte> cryptBytes = new byte[clearBytes.Length];
@@ -221,7 +223,6 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
             }
         } finally {
             EncryptKey();
-            _isEncrypted = true;
             _ = _gate.Release();
         }
     }
@@ -232,18 +233,17 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         _gate.Wait();
         try {
             if (!engineId.SequenceEqual(_engineId)) {
-                _keyHandle.Dispose();
-                _keyHandle = SafeMemoryHandle.Zero;
+                _keyHandle?.Dispose();
+                _keyHandle = null;
             }
-            if (_keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
+            if (_keyHandle is null || _keyHandle.IsInvalid || _keyHandle.IsClosed || _keyHandle == SafeMemoryHandle.Zero) {
                 StoreHashKey(algo, engineId);
-                _engineId = [..engineId];
+                _engineId = [.. engineId];
             }
-            if (_isEncrypted) {
+            if (_keyEncrypted) {
                 DecryptKey();
-                _isEncrypted = false;
             }
-            Span<byte> key = new byte[_keyHandle.Length];
+            Span<byte> key = new byte[_keyHandle!.Length];
             try {
                 _keyHandle.CopyTo(key);
                 return algo.Authenticate(key, wholeMessage);
@@ -252,7 +252,6 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
             }
         } finally {
             EncryptKey();
-            _isEncrypted = true;
             _ = _gate.Release();
         }
     }
@@ -261,15 +260,14 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
             return;
         }
         try {
-            if (_isEncrypted) {
+            if (_credentialEncrypted) {
                 DecryptCred();
             }
-            _isEncrypted = false;
             using CredProxy proxy = new(_credHandle);
             int secretLen = CredApi.GetPassLength(_credHandle);
             int secretLenW = secretLen * sizeof(char);
             char[] chars = new char[secretLen - 1];
-            Span<byte> secret = new byte [secretLenW];
+            Span<byte> secret = new byte[secretLenW];
             Span<byte> key = [];
             try {
                 SafeMemoryHandle pass = proxy.GetPassword();
@@ -310,7 +308,6 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         } finally {
             EncryptCred();
             EncryptKey();
-            _isEncrypted = true;
         }
     }
     private void StoreHashKey(Authentication algo, ReadOnlySpan<byte> engineId) {
@@ -322,39 +319,39 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
         StoreKey(del, engineId);
     }
     private void DecryptCred() {
-        if (_credHandle.IsInvalid || !_isEncrypted) {
+        if (_credHandle.IsInvalid || !_credentialEncrypted) {
             return;
         }
         try {
             _credHandle.Decrypt();
-            _isEncrypted = false;
+            _credentialEncrypted = false;
         } catch { }
     }
     private void EncryptCred() {
-        if (_credHandle.IsInvalid || _isEncrypted) {
+        if (_credHandle.IsInvalid || _credentialEncrypted) {
             return;
         }
         try {
             _credHandle = _credHandle.Encrypt(true);
-            _isEncrypted = true;
+            _credentialEncrypted = true;
         } catch { }
     }
     private void DecryptKey() {
-        if (_keyHandle.IsInvalid || !_isEncrypted) {
+        if (_keyHandle is null || _keyHandle.IsInvalid || !_keyEncrypted) {
             return;
         }
         try {
             _keyHandle.Decrypt();
-            _isEncrypted = false;
+            _keyEncrypted = false;
         } catch { }
     }
     private void EncryptKey() {
-        if (_keyHandle.IsInvalid || _isEncrypted) {
+        if (_keyHandle is null || _keyHandle.IsInvalid || _keyEncrypted) {
             return;
         }
         try {
             _keyHandle = _keyHandle.Encrypt(true);
-            _isEncrypted = true;
+            _keyEncrypted = true;
         } catch { }
     }
     public void Dispose(bool disposing) {
@@ -363,7 +360,8 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
                 // dispose managed state (managed objects)
             }
             _credHandle.Dispose();
-            _keyHandle.Dispose();
+            _keyHandle?.Dispose();
+            _gate.Dispose();
             _disposedValue = true;
         }
     }

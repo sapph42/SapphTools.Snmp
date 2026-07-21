@@ -15,7 +15,7 @@ public class SafeMemoryHandle : SafeHandle, IEquatable<SafeMemoryHandle> {
     public uint Length { get; init; }
     public uint EncryptedLength { get; init; }
     public MemoryType Type { get; init; }
-    public override bool IsInvalid => handle == IntPtr.Zero || Length == 0;
+    public override bool IsInvalid => handle == IntPtr.Zero;
 
     public SafeMemoryHandle(IntPtr existingHandle, bool ownsHandle, uint length, MemoryType type) : base(IntPtr.Zero, ownsHandle) {
         Length = length;
@@ -79,22 +79,27 @@ public class SafeMemoryHandle : SafeHandle, IEquatable<SafeMemoryHandle> {
         CryptographicOperations.ZeroMemory(span);
     }
     protected override bool ReleaseHandle() {
-        if (IsInvalid) {
+        if (handle == IntPtr.Zero) {
+            return true;
+        }
+        try {
+            ZeroMem();
+            switch (Type) {
+                case MemoryType.Heap:
+                    Marshal.FreeHGlobal(handle);
+                    break;
+                case MemoryType.CoTaskMem:
+                    Marshal.FreeCoTaskMem(handle);
+                    break;
+                case MemoryType.None:
+                    break;
+            }
+            return true;
+        } catch {
+            // ReleaseHandle must not allow exceptions to escape.
             return false;
         }
-        ZeroMem();
-        switch (Type) {
-            case MemoryType.Heap:
-                Marshal.FreeHGlobal(handle);
-                break;
-            case MemoryType.CoTaskMem:
-                Marshal.FreeCoTaskMem(handle);
-                break;
-            case MemoryType.None:
-            default:
-                return false;
-        }
-        return true;
+    }
     }
     public static SafeMemoryHandle Create(MemoryType type, uint length) {
         return type switch {
@@ -105,25 +110,25 @@ public class SafeMemoryHandle : SafeHandle, IEquatable<SafeMemoryHandle> {
     public static SafeMemoryHandle CreateCoTaskMem(uint length) => Create(MemoryType.CoTaskMem, length);
     public static SafeMemoryHandle CreateHGlobal(uint length) => Create(MemoryType.Heap, length);
 
-    public static unsafe SafeMemoryHandle MigrateHandle(ref SafeMemoryHandle consumedHandle, out SafeMemoryHandle resultHandle, MemoryType resultType) {
-        SafeMemoryHandle local = Interlocked.Exchange(ref consumedHandle!, null) ?? throw new ArgumentNullException(nameof(consumedHandle));
+    public static unsafe SafeMemoryHandle MigrateHandle(
+        ref SafeMemoryHandle consumedHandle,
+        out SafeMemoryHandle resultHandle,
+        MemoryType resultType
+    ) {
+        SafeMemoryHandle local =
+            Interlocked.Exchange(ref consumedHandle!, null)
+            ?? throw new ArgumentNullException(nameof(consumedHandle));
         try {
-            uint len = consumedHandle.EncryptedLength;
-            resultHandle = Create(resultType, len);
-            Span<byte> srcData = new((void*)consumedHandle.handle, (int)len);
-            Span<byte> dstData = new((void*)resultHandle.handle, (int)len);
-            dstData.Clear();
-            srcData.CopyTo(dstData);
+            uint length = local.EncryptedLength;
+            resultHandle = Create(resultType, length);
+            Span<byte> source = new((void*)local.DangerousGetHandle(), checked((int)length));
+            Span<byte> destination = new((void*)resultHandle.DangerousGetHandle(), checked((int)length));
+            destination.Clear();
+            source.CopyTo(destination);
             return resultHandle;
         } finally {
             local.Dispose();
         }
-    }
-    public new void Dispose() {
-        unsafe {
-            CryptographicOperations.ZeroMemory(new Span<byte>((void*)handle, (int)Length));
-        }
-        _ = ReleaseHandle();
     }
     public bool Equals(SafeMemoryHandle? other) {
         if (other is null) {
