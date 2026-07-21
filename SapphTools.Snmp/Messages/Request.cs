@@ -19,16 +19,18 @@ public abstract class Request : ISnmpRequest, IDisposable {
 
     public abstract Integer Version { get; }
     public IPAddress Target { get; init; }
+    public int Port { get; init; }
     public int Timeout { get; set; } = 5000;
 
     protected Request(IPAddress target, int port, int timeout, int retries) {
         Target = target;
+        Port = port;
         Timeout = timeout;
-        _peerEndPoint = new(target, port);
-        _socket = new(target.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+        _peerEndPoint = new(Target, Port);
+        _socket = new(Target.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
         _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
-        _socket.ReceiveTimeout = timeout / 2;
-        _socket.SendTimeout = timeout / 2;
+        _socket.ReceiveTimeout = Timeout / 2;
+        _socket.SendTimeout = Timeout / 2;
         _socket.Connect(_peerEndPoint);
 #if TRACE
         _socket.ReceiveTimeout = -1;
@@ -91,6 +93,16 @@ public abstract class Request : ISnmpRequest, IDisposable {
         int timeout = 0,
         int retries = 0
     ) => CreateV3Internal(ip, digest, privacy, userName, contextName, port, timeout, retries);
+    public static SnmpV3Request CreateV3(
+        string ip,
+        AuthenticationDigest digest,
+        Credential authCred,
+        string userName,
+        string contextName = "",
+        int port = 161,
+        int timeout = 0,
+        int retries = 0
+    ) => CreateV3Internal(ip, digest, null, userName, contextName, port, timeout, retries, authCred, null);
     public static SnmpV3Request CreateV3(
         string ip,
         AuthenticationDigest digest,
@@ -169,6 +181,18 @@ public abstract class Request : ISnmpRequest, IDisposable {
         };
     }
     public abstract ReadOnlySpan<byte> Construct(string[] oids, GeneralRequestType type, out long requestId);
+    public void RefreshSocket() {
+        try {
+            _socket?.Dispose();
+        } catch { }
+        try {
+            _socket = new(Target.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+            _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+            _socket.ReceiveTimeout = Timeout / 2;
+            _socket.SendTimeout = Timeout / 2;
+            _socket.Connect(_peerEndPoint);
+        } catch { }
+    }
 
     public void Dispose() {
         _socket.Disconnect(false);
