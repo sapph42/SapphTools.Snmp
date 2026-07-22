@@ -354,16 +354,16 @@ public sealed class Credential : IDisposable, IEquatable<Credential>, IEquatable
             _keyEncrypted = true;
         } catch { }
     }
-    public void Dispose(bool disposing) {
-        if (!_disposedValue) {
-            if (disposing) {
-                // dispose managed state (managed objects)
-            }
-            _credHandle.Dispose();
-            _keyHandle?.Dispose();
-            _gate.Dispose();
-            _disposedValue = true;
+    private void Dispose(bool disposing) {
+        if (_disposedValue) {
+            return;
         }
+        if (disposing) {
+            _gate.Dispose();
+        }
+        _credHandle?.Dispose();
+        _keyHandle?.Dispose();
+        _disposedValue = true;
     }
     ~Credential() {
         Dispose(disposing: false);
